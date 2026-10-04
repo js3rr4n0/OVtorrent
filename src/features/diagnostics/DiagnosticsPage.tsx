@@ -24,6 +24,7 @@ import {
 } from '@/core/streaming/capabilities';
 import { isLocalStorageAvailable } from '@/core/storage/StorageAdapter';
 import { sessionCleanup } from '@/core/cleanup/SessionCleanup';
+import { ExtendedDiagnostics, type ExtendedReport } from './ExtendedDiagnostics';
 
 function describeOs(ua: string): string {
   if (/Android/i.test(ua)) return 'Android';
@@ -52,6 +53,7 @@ export function DiagnosticsPage() {
   const tv = useTvDetection();
   const [estimate, setEstimate] = useState<{ usage?: number; quota?: number }>({});
   const [copied, setCopied] = useState(false);
+  const [extended, setExtended] = useState<ExtendedReport | null>(null);
   useEffect(() => {
     void storageEstimate().then(setEstimate);
   }, []);
@@ -143,6 +145,7 @@ export function DiagnosticsPage() {
       {
         ...report,
         estimate,
+        extended,
         cleanupHistory: sessionCleanup.history(),
         generatedAt: new Date().toISOString(),
       },
@@ -236,6 +239,7 @@ export function DiagnosticsPage() {
             </ul>
           )}
         </Card>
+        <ExtendedDiagnostics onReport={setExtended} />
       </div>
     </div>
   );

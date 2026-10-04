@@ -21,8 +21,18 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (open) cancelRef.current?.focus();
+    if (open) {
+      // Remember the control that opened the dialog and give it the focus back on close.
+      openerRef.current = document.activeElement as HTMLElement | null;
+      cancelRef.current?.focus();
+      return () => {
+        openerRef.current?.focus?.();
+        openerRef.current = null;
+      };
+    }
+    return undefined;
   }, [open]);
   useEffect(() => {
     if (!open) return;

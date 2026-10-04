@@ -16,6 +16,9 @@ import type {
 } from '../types';
 import { StreamingUnavailableError } from '../types';
 import { createEphemeralChunkStoreClass } from './EphemeralChunkStore';
+import { planBuffer, type EffectiveBufferPlan } from '../../memory/memoryPolicy';
+import { parseWorker } from '../../../workers/workerClient';
+import type { WorkerJob } from '../../../workers/protocol';
 import { getSharedClient, getStreamingRegistration } from './loadWebTorrent';
 import { DEFAULT_WEBSOCKET_TRACKERS, normalizeTrackerList } from './trackers';
 import type { WtAddOptions, WtBrowserServer, WtClient, WtTorrent } from './types';
@@ -41,6 +44,29 @@ export interface WebTorrentEngineDeps {
   getRegistration?: () => Promise<ServiceWorkerRegistration>;
   createBufferStore?: (settings: Settings) => EphemeralBufferStore;
   now?: () => number;
+  /** Buffer plan resolver (memory policy by default; injected in tests). */
+  planBuffer?: (settings: Settings) => EffectiveBufferPlan;
+  /** Availability job runner (worker by default; injected in tests). */
+  runAvailability?: (job: AvailabilityJob) => Promise<{ availability: number; sampled: number }>;
+}
+
+type AvailabilityJob = Extract<WorkerJob, { kind: 'availability' }>;
+
+/** Serialises a bitfield-like object (`get(i)` or a raw buffer) into MSB-first bytes. */
+export function bitfieldBytes(
+  source: { get(index: number): boolean; buffer?: Uint8Array } | null | undefined,
+  pieceCount: number,
+): Uint8Array {
+  const bytes = new Uint8Array(Math.ceil(pieceCount / 8));
+  if (!source) return bytes;
+  if (source.buffer instanceof Uint8Array && source.buffer.length >= bytes.length) {
+    bytes.set(source.buffer.subarray(0, bytes.length));
+    return bytes;
+  }
+  for (let i = 0; i < pieceCount; i++) {
+    if (source.get(i)) bytes[i >> 3]! |= 0x80 >> (i & 7);
+  }
+  return bytes;
 }
 
 const SUPPORTED: MediaItem['sourceType'][] = ['magnet', 'torrent'];
@@ -130,6 +156,7 @@ class WebTorrentSession implements StreamingSession {
   private cleanupFns: Array<() => void> = [];
   private destroyed = false;
   private readonly settings: Settings;
+  private readonly plan: EffectiveBufferPlan;
   private readonly now: () => number;
 
   constructor(
@@ -137,6 +164,7 @@ class WebTorrentSession implements StreamingSession {
     private readonly deps: WebTorrentEngineDeps,
   ) {
     this.settings = deps.getSettings();
+    this.plan = deps.planBuffer ? deps.planBuffer(this.settings) : planBuffer(this.settings);
     this.now = deps.now ?? (() => Date.now());
     // WebTorrent must hold pieces somewhere to play them. Its browser default
     // is the Origin Private File System (disk), which this application never
@@ -290,6 +318,7 @@ class WebTorrentSession implements StreamingSession {
     this.video = options.videoElement;
     this.startedAt = this.now();
     this.warnings.clear();
+    if (this.plan.adjustedReason) this.warnings.set('memory-plan', this.plan.adjustedReason);
 
     // Only the chosen file is downloaded; the playhead region is critical.
     torrent.files.forEach((f, i) => (i === index ? f.select(1) : f.deselect()));
@@ -360,6 +389,14 @@ class WebTorrentSession implements StreamingSession {
     const torrent = this.torrent;
     const video = this.video;
     if (!torrent || torrent.destroyed || !video) return;
+    // Background tabs: keep the download window and memory checks, skip
+    // UI-oriented work (metrics emission) to save CPU on TV boxes.
+    const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    if (hidden) {
+      this.scheduleCritical(false);
+      this.checkMemoryLimit();
+      return;
+    }
     // Peer watchdog.
     const peers = torrent.numPeers;
     if (peers > 0) {
@@ -393,7 +430,7 @@ class WebTorrentSession implements StreamingSession {
       durationSeconds:
         Number.isFinite(video.duration) && video.duration > 0 ? video.duration : undefined,
       fallbackKbps: this.settings.buffer.estimateBitrateKbps,
-      window: resolveBufferWindow(this.settings),
+      window: this.plan.window,
       havePiece: (i) => Boolean(torrent.bitfield?.get(i)),
     });
   }
@@ -417,7 +454,7 @@ class WebTorrentSession implements StreamingSession {
   private checkMemoryLimit() {
     const torrent = this.torrent;
     if (!torrent || !this.settings.p2p.restartOnMemoryLimit) return;
-    if (torrent.downloaded <= this.settings.buffer.memoryLimitBytes) return;
+    if (torrent.downloaded <= this.plan.memoryLimitBytes) return;
     void this.restartForMemory();
   }
 
@@ -546,26 +583,38 @@ class WebTorrentSession implements StreamingSession {
     return this.subtitleUrl;
   }
 
+  private availabilityPending = false;
+
+  /**
+   * Availability of the active file across known peers. The bitfields are
+   * copied and handed to the parsing/metrics worker (main-thread fallback)
+   * so TV boxes never scan thousands of pieces on the UI thread; the value is
+   * refreshed at most every 5 s and reported from the cache in between.
+   */
   private availability(): number {
     const torrent = this.torrent;
     const file = torrent?.files[this.fileIndex];
     if (!torrent || !file) return Number.NaN;
     if (torrent.wires.length === 0 && torrent.downloaded === 0) return Number.NaN;
-    if (this.now() - this.availabilityCache.at < 5000) return this.availabilityCache.value;
-    const range = pieceRangeOf(file, torrent.pieceLength);
-    const total = range.end - range.start + 1;
-    // Sample at most 500 pieces to keep the check cheap on TV boxes.
-    const step = Math.max(1, Math.floor(total / 500));
-    let sampled = 0;
-    let available = 0;
-    for (let i = range.start; i <= range.end; i += step) {
-      sampled++;
-      if (torrent.bitfield?.get(i) || torrent.wires.some((w) => w.peerPieces.get(i))) available++;
+    if (this.now() - this.availabilityCache.at < 5000 || this.availabilityPending) {
+      return this.availabilityCache.value;
     }
-    const value =
-      torrent.wires.length === 0 && available === 0 ? Number.NaN : available / Math.max(1, sampled);
-    this.availabilityCache = { at: this.now(), value };
-    return value;
+    const range = pieceRangeOf(file, torrent.pieceLength);
+    const have = bitfieldBytes(torrent.bitfield, torrent.pieces.length);
+    const peers = torrent.wires.map((w) => bitfieldBytes(w.peerPieces, torrent.pieces.length));
+    this.availabilityPending = true;
+    const run = this.deps.runAvailability ?? ((job: AvailabilityJob) => parseWorker.run(job));
+    run({ kind: 'availability', have, peers, start: range.start, end: range.end, maxSamples: 500 })
+      .then((r) => {
+        this.availabilityCache = { at: this.now(), value: r.availability };
+      })
+      .catch(() => {
+        this.availabilityCache = { at: this.now(), value: Number.NaN };
+      })
+      .finally(() => {
+        this.availabilityPending = false;
+      });
+    return this.availabilityCache.value;
   }
 
   metrics(): StreamingMetrics {

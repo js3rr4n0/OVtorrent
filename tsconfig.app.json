@@ -25,7 +25,10 @@
       "@testing-library/jest-dom"
     ],
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/test/audit"]
 }

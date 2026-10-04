@@ -9,6 +9,7 @@ import {
   WebTorrentStreamingEngine,
 } from '../WebTorrentStreamingEngine';
 import { THROTTLED_RATE_BPS } from '../windowPolicy';
+import { computeAvailability } from '@/workers/protocol';
 import { FakeWebTorrentClient, type FakeTorrent } from '@/test/fakes';
 
 const HASH = 'dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c';
@@ -51,6 +52,7 @@ function makeEngine(
     getRegistration: async () => ({ scope: 'http://localhost/' }) as ServiceWorkerRegistration,
     createBufferStore: () => new MemoryBufferStore(Number.POSITIVE_INFINITY),
     now,
+    runAvailability: async (job) => computeAvailability(job),
   });
 }
 
@@ -224,6 +226,8 @@ describe('WebTorrentStreamingEngine', () => {
     expect(Number.isNaN(session.metrics().availability)).toBe(true);
     t.addPeer((i) => i < 25);
     t.downloadSpeed = 1234;
+    session.metrics(); // schedules the async availability job
+    await new Promise((r) => setTimeout(r, 0));
     const m = session.metrics();
     expect(m.peers).toBe(1);
     expect(m.downloadSpeedBps).toBe(1234);

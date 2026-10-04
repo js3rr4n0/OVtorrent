@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button, Field, Input, Notice } from '@/components/ui';
-import { importPlaylistJson, type JsonImportResult } from '@/core/import/json';
+import type { JsonImportResult } from '@/core/import/json';
+import { parseWorker } from '@/workers/workerClient';
 import { usePlaylistStore } from '@/state/playlistStore';
 import { useLibraryStore } from '@/state/libraryStore';
 
@@ -31,8 +32,8 @@ export function JsonPlaylistImport({
     setText(await file.text());
   };
 
-  const validate = () => {
-    const r = importPlaylistJson(text);
+  const validate = async () => {
+    const r = await parseWorker.run({ kind: 'parse-json-playlist', text });
     setResult(r);
     if (r.ok && r.needsConfirmation) setConfirmLarge(true);
   };
@@ -91,7 +92,7 @@ export function JsonPlaylistImport({
         <label htmlFor="json-also-library">Añadir también los elementos a la biblioteca</label>
       </div>
       <div className="flex gap-2">
-        <Button variant="primary" disabled={!text.trim()} onClick={validate}>
+        <Button variant="primary" disabled={!text.trim()} onClick={() => void validate()}>
           Validar
         </Button>
         {result?.ok && !result.needsConfirmation ? (

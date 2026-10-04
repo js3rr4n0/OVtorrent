@@ -30,6 +30,7 @@ OVtorrent se publica bajo licencia **MIT** (ver `LICENSE`). Todas las dependenci
 | prettier                                                                                               | MIT        |
 | fake-indexeddb                                                                                         | Apache-2.0 |
 | bittorrent-tracker (server, solo en e2e; dependencia de webtorrent)                                    | MIT        |
+| @axe-core/playwright, axe-core (solo e2e)                                                              | MPL-2.0    | Auditoría de accesibilidad automatizada |
 
 ## Previstas en fases posteriores
 

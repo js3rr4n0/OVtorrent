@@ -10,6 +10,7 @@
 - `FakeStorageAdapter`: adapter en memoria que puede simular fallos de escritura (cuota).
 - `FakeWebTorrentClient` / `FakeTorrent`: implementan los tipos estructurales de `streaming/webtorrent/types.ts` (add, select/deselect, critical, throttle, servidor, peers con bitfield, recepción de piezas en el store inyectado, destrucción).
 - `createFakeHls` / `FakeHlsInstance`: implementan el subconjunto estructural de hls.js (configuración, eventos, niveles, pistas, errores).
+- `FakeWorker` (en `src/workers/__tests__`): doble en proceso del Worker, con variante rota para probar el fallback.
 
 `fake-indexeddb` sustituye IndexedDB en jsdom para probar `IndexedDbBufferStore`.
 
@@ -37,6 +38,11 @@ Cobertura actual (`src/**/__tests__`):
 | M3U/M3U8                | listas de medios con títulos, duraciones, magnets y rutas relativas; detección de HLS master/segmentos; tipos de fuente; rechazo de esquemas peligrosos; límites y confirmación; HLS requiere URL                                                                                                                                                                              |
 | Subtítulos              | detección SRT/VTT, conversión con normalización de tiempos y limpieza de etiquetas, cues vacíos, paso directo de WebVTT                                                                                                                                                                                                                                                        |
 | HLS                     | política de calidad (resolución, preset, bitrate, tope automático, nivel inicial, configuración), motor sobre hls.js (adjuntar, límites al parsear el manifest, variantes/audio/subtítulos, métricas, reintentos de red y recuperación de media, mensaje final), ausencia de MSE, ruta nativa sin cargar hls.js                                                                |
+| Worker                  | trabajos de parsing y disponibilidad, cliente con worker falso, fallback al hilo principal cuando el worker falla o no existe, propagación de errores                                                                                                                                                                                                                          |
+| Memoria                 | plan de búfer en dispositivos normales y con poca RAM, opt-out                                                                                                                                                                                                                                                                                                                 |
+| Compatibilidad          | sondas MediaCapabilities sin API, con respuestas simuladas y con errores; autoprueba WebRTC sin API y con `RTCPeerConnection` falso                                                                                                                                                                                                                                            |
+| Fase 4 (UI)             | exportación selectiva y vista previa, recorrido de carpetas con límites, lista virtualizada                                                                                                                                                                                                                                                                                    |
+| Auditoría de seguridad  | patrones prohibidos, CSP, `index.html`, licencias de producción, Service Worker de streaming                                                                                                                                                                                                                                                                                   |
 | Limpieza                | razones, ciclo de vida (`pagehide`, `beforeunload`, `hidden`), aislamiento de fallos                                                                                                                                                                                                                                                                                           |
 | TV                      | detección por user agent, navegación espacial, teclas de retroceso                                                                                                                                                                                                                                                                                                             |
 | Pantallas               | biblioteca, importación de magnet y JSON, playlists, ajustes de calidad/búfer, almacenamiento (restablecimiento), reproductor (magnet sin motor, archivo sin seleccionar, URL con controles), diagnóstico, navegación por teclado/D-pad                                                                                                                                        |
@@ -51,6 +57,7 @@ npm run test:e2e
 `playwright.config.ts` levanta `npm run preview` y ejecuta en Chromium:
 
 - `e2e/app.spec.ts`: carga con hash routing y sin peticiones a terceros, recarga en rutas profundas, importación y persistencia de magnet con arranque del motor WebTorrent, creación y exportación de playlist, navegación D-pad en modo TV, borrado total de datos, funcionamiento offline de la interfaz, pantalla de diagnóstico, importación M3U como biblioteca y playlist, subtítulos SRT locales convertidos a WebVTT en el reproductor y panel simplificado en modo TV.
+- `e2e/a11y.spec.ts`: auditoría axe-core (WCAG 2.0/2.1 A/AA y buenas prácticas) en todas las rutas, en modo TV y en el reproductor; las violaciones graves o críticas hacen fallar la suite.
 - `e2e/p2p.spec.ts`: **streaming P2P real** sin red ni torrents públicos. El test arranca un tracker WebSocket local (`bittorrent-tracker/server`), un segundo contexto de navegador graba un clip VP8 con `MediaRecorder` y lo siembra con el bundle de WebTorrent, y la aplicación importa el magnet (solo con el tracker local), conecta por WebRTC, recibe el stream a través del Service Worker (respuesta 206 con rangos), reproduce más de un segundo, muestra 1 peer y libera el `<video>` al detener.
 
 Si Playwright no encuentra su Chromium, define `PLAYWRIGHT_CHROMIUM_PATH` con la ruta a un ejecutable de Chromium.
@@ -64,5 +71,3 @@ npm run format:check
 ```
 
 ## Pendiente por fase
-
-- Fase 4: pruebas de compatibilidad, auditoría de seguridad y accesibilidad.

@@ -125,10 +125,11 @@ export function usePlaybackSession(
           fileIndex,
           bufferWindow: window,
         });
-        // Metrics are throttled to one update per second to keep TV boxes responsive.
+        // Metrics are throttled to one update per second and paused while the
+        // tab is hidden to keep TV boxes responsive.
         timer = setInterval(() => {
-          if (!cancelled)
-            setState((prev) => ({ ...prev, metrics: session.metrics(), state: session.state }));
+          if (cancelled || document.visibilityState === 'hidden') return;
+          setState((prev) => ({ ...prev, metrics: session.metrics(), state: session.state }));
         }, 1000);
       } catch (err) {
         if (cancelled) return;

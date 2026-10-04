@@ -7,6 +7,7 @@ import { sanitizeText } from '@/core/security/sanitize';
 import { MAX_TITLE_LENGTH } from '@/core/schemas/media';
 import { useLibraryStore } from '@/state/libraryStore';
 import { useSessionStore } from '@/state/sessionStore';
+import { FolderImport } from './FolderImport';
 
 export function LocalFileImport({
   onImported,
@@ -84,6 +85,7 @@ export function LocalFileImport({
           Solo añadir
         </Button>
       </div>
+      <FolderImport onImported={onImported} />
     </div>
   );
 }

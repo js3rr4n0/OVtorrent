@@ -8,6 +8,10 @@ import { useLibraryStore } from '@/state/libraryStore';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { AddToPlaylistDialog } from './AddToPlaylistDialog';
 import { MediaItemRow } from './MediaItemRow';
+import { VirtualList } from '@/components/VirtualList';
+
+/** Approximate row height used only when the list is long enough to virtualise. */
+const ROW_HEIGHT = 96;
 
 export function LibraryPage() {
   useDocumentTitle('Biblioteca');
@@ -87,12 +91,16 @@ export function LibraryPage() {
       ) : filtered.length === 0 ? (
         <EmptyState title="Sin resultados" />
       ) : (
-        <ul className="flex flex-col gap-2" aria-label="Elementos de la biblioteca">
-          {filtered.map((item) => {
+        <VirtualList
+          items={filtered}
+          rowHeight={ROW_HEIGHT}
+          getKey={(item) => item.id}
+          className="flex flex-col gap-2"
+          aria-label="Elementos de la biblioteca"
+          renderRow={(item) => {
             const h = history.find((e) => e.itemId === item.id);
             return (
               <MediaItemRow
-                key={item.id}
                 item={item}
                 favorite={favorites.includes(item.id)}
                 onToggleFavorite={() => toggleFavorite(item.id)}
@@ -108,8 +116,8 @@ export function LibraryPage() {
                 }
               />
             );
-          })}
-        </ul>
+          }}
+        />
       )}
       <ConfirmDialog
         open={toRemove !== null}

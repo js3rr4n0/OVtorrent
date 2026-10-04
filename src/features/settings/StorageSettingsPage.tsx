@@ -5,7 +5,6 @@ import { Button, Card, Field, Input, Notice, PageHeader, Toggle } from '@/compon
 import { formatBytes } from '@/components/format';
 import { storageEstimate } from '@/core/streaming/capabilities';
 import {
-  buildExportBundle,
   clearEverything,
   clearHistoryOnly,
   clearPlaylistsOnly,
@@ -18,6 +17,14 @@ import { useHistoryStore } from '@/state/historyStore';
 import { useLibraryStore } from '@/state/libraryStore';
 import { usePlaylistStore } from '@/state/playlistStore';
 import { downloadText } from '@/features/playlists/playlistExport';
+import {
+  buildPartialExport,
+  EXPORT_SECTIONS,
+  previewBundle,
+  SECTION_LABELS,
+  type ExportSection,
+  type ImportPreview,
+} from './exportSections';
 
 type Action = 'all' | 'history' | 'playlists' | 'cache' | 'settings' | null;
 
@@ -31,6 +38,9 @@ export function StorageSettingsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportBundleResult | null>(null);
   const [merge, setMerge] = useState(true);
+  const [sections, setSections] = useState<ExportSection[]>([...EXPORT_SECTIONS]);
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [pendingText, setPendingText] = useState<string | null>(null);
 
   useEffect(() => {
     void storageEstimate().then(setEstimate);
@@ -67,8 +77,18 @@ export function StorageSettingsPage() {
   const onImport = async (file: File | undefined) => {
     if (!file) return;
     const text = await file.text();
-    const r = importBundle(text, { merge });
+    setImportResult(null);
+    const p = previewBundle(text);
+    setPreview(p);
+    setPendingText(p.ok ? text : null);
+  };
+
+  const applyImport = () => {
+    if (!pendingText) return;
+    const r = importBundle(pendingText, { merge });
     setImportResult(r);
+    setPendingText(null);
+    setPreview(null);
     if (r.ok) setStatus('Importación completada.');
   };
 
@@ -126,16 +146,42 @@ export function StorageSettingsPage() {
         </Card>
         <Card>
           <h2 className="mb-3 text-lg font-semibold">Exportar / importar</h2>
+          <fieldset className="mb-3">
+            <legend className="mb-1 text-sm font-medium">Secciones a exportar</legend>
+            {EXPORT_SECTIONS.map((sec) => (
+              <div key={sec} className="flex items-center gap-2">
+                <input
+                  id={`exp-${sec}`}
+                  type="checkbox"
+                  className="h-6 w-6"
+                  checked={sections.includes(sec)}
+                  onChange={(e) =>
+                    setSections((prev) =>
+                      e.target.checked ? [...prev, sec] : prev.filter((x) => x !== sec),
+                    )
+                  }
+                />
+                <label htmlFor={`exp-${sec}`} className="min-h-12 py-1 text-sm tv:text-lg">
+                  {SECTION_LABELS[sec]}
+                </label>
+              </div>
+            ))}
+          </fieldset>
           <Button
             variant="primary"
+            disabled={sections.length === 0}
             onClick={() =>
               downloadText(
                 `ovtorrent-export-${new Date().toISOString().slice(0, 10)}.json`,
-                JSON.stringify(buildExportBundle(), null, 2),
+                JSON.stringify(buildPartialExport(sections), null, 2),
               )
             }
           >
-            Exportar toda la configuración a JSON
+            Exportar{' '}
+            {sections.length === EXPORT_SECTIONS.length
+              ? 'toda la configuración'
+              : 'las secciones elegidas'}{' '}
+            a JSON
           </Button>
           <div className="mt-4">
             <Toggle
@@ -154,6 +200,53 @@ export function StorageSettingsPage() {
               />
             </Field>
           </div>
+          {preview ? (
+            preview.ok ? (
+              <div className="mb-3">
+                <Notice kind="info" title="Vista previa de la importación">
+                  <p>
+                    Exportado el{' '}
+                    {preview.exportedAt ? new Date(preview.exportedAt).toLocaleString('es') : '?'}.
+                  </p>
+                  <ul className="list-disc pl-5">
+                    {EXPORT_SECTIONS.filter((sec) => preview.counts[sec] !== undefined).map(
+                      (sec) => (
+                        <li key={sec}>
+                          {SECTION_LABELS[sec]}: {preview.counts[sec]}
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                  <p className="mt-1">
+                    {merge
+                      ? 'Se fusionará con los datos actuales.'
+                      : 'Reemplazará biblioteca, playlists e historial actuales.'}
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <Button variant="primary" onClick={applyImport}>
+                      Aplicar importación
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setPreview(null);
+                        setPendingText(null);
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </Notice>
+              </div>
+            ) : (
+              <Notice kind="error" title="No se pudo leer el archivo">
+                <ul className="list-disc pl-5">
+                  {preview.errors.map((e) => (
+                    <li key={e}>{e}</li>
+                  ))}
+                </ul>
+              </Notice>
+            )
+          ) : null}
           {importResult ? (
             importResult.ok ? (
               <Notice kind="success">

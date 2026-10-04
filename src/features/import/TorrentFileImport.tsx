@@ -5,9 +5,9 @@ import { createMediaItem } from '@/core/import/json';
 import {
   magnetFromTorrent,
   MAX_TORRENT_BYTES,
-  parseTorrentFile,
   type TorrentSummary,
 } from '@/core/import/torrentFile';
+import { parseWorker } from '@/workers/workerClient';
 import { guessPlayableByName } from '@/core/media/compat';
 import { useLibraryStore } from '@/state/libraryStore';
 
@@ -31,7 +31,8 @@ export function TorrentFileImport({
     }
     setBusy(true);
     try {
-      setSummary(await parseTorrentFile(await file.arrayBuffer()));
+      const buffer = await file.arrayBuffer();
+      setSummary(await parseWorker.run({ kind: 'parse-torrent', buffer }, [buffer]));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo leer el torrent.');
     } finally {

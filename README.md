@@ -4,7 +4,7 @@
 
 PWA 100 % estática: se ejecuta íntegramente en el navegador, sin backend, sin base de datos, sin cuentas, sin claves API y sin servicios de pago. Se despliega como archivos estáticos en cualquier servidor HTTP (GitHub Pages, GitLab Pages, Cloudflare Pages, Netlify, Nginx o un servidor local).
 
-> Estado: **Fase 3 completada**. Fase 1: PWA estática, biblioteca y playlists locales, importación de magnet/.torrent/archivo/URL/JSON, reproductor HTML5, configuración de búfer y calidad, modo TV básico, diagnóstico, limpieza de sesión. Fase 2: motor **WebTorrent en el navegador** (WebRTC + trackers WebSocket), selección de archivo dentro del torrent, métricas de peers y velocidad, prioridad secuencial con ventana temporal, búfer efímero en RAM o IndexedDB, reinicio automático al superar el límite de memoria y limpieza avanzada. Fase 3: importación M3U/M3U8, HLS multivariant (nativo o hls.js sobre MediaSource), selección de calidad entre variantes declaradas, subtítulos SRT convertidos localmente a WebVTT y pistas de subtítulos del torrent o del HLS, pistas de audio alternativas cuando la fuente y el navegador las exponen, panel de reproducción simplificado para TV y diagnóstico ampliado. Ver [recap.md](recap.md).
+> Estado: **Fase 4 completada** (todas las fases del plan). Fase 1: PWA estática, biblioteca y playlists locales, importación de magnet/.torrent/archivo/URL/JSON, reproductor HTML5, configuración de búfer y calidad, modo TV básico, diagnóstico, limpieza de sesión. Fase 2: motor **WebTorrent en el navegador** (WebRTC + trackers WebSocket), selección de archivo dentro del torrent, métricas de peers y velocidad, prioridad secuencial con ventana temporal, búfer efímero en RAM o IndexedDB, reinicio automático al superar el límite de memoria y limpieza avanzada. Fase 3: importación M3U/M3U8, HLS multivariant (nativo o hls.js sobre MediaSource), selección de calidad entre variantes declaradas, subtítulos SRT convertidos localmente a WebVTT y pistas de subtítulos del torrent o del HLS, pistas de audio alternativas cuando la fuente y el navegador las exponen, panel de reproducción simplificado para TV y diagnóstico ampliado. Fase 4: Worker de parsing y métricas con fallback, optimización de memoria (ventana automática en dispositivos con poca RAM, listas virtualizadas, sondeo pausado en pestañas ocultas), exportación selectiva con vista previa de importación, diagnóstico ampliado con pruebas de decodificación (MediaCapabilities) y de WebRTC, carpetas locales, auditoría de seguridad automatizada y auditoría de accesibilidad con axe. Ver [recap.md](recap.md).
 
 ## Qué hace (y qué no)
 
@@ -38,7 +38,7 @@ Se muestran en la aplicación (`/about`, `/diagnostics`) y en [docs/STREAMING-LI
 ## Inicio rápido
 
 ```bash
-npm install
+npm install   # con npm 10 puede requerir: npm install --legacy-peer-deps (peers opcionales de Vitest 4)
 npm run dev        # servidor de desarrollo (Vite)
 npm run build      # salida estática en dist/
 npm run preview    # sirve dist/ localmente

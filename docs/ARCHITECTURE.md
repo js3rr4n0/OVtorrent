@@ -38,7 +38,8 @@ Navegador
   |     +-- SessionCleanup: stop, cambio de fuente, seek lejano, límite de memoria,
   |         pagehide, beforeunload, visibilitychange
   |
-  +-- Worker opcional (Fase 4: parsing de playlists, cálculos de piezas, métricas)
+  +-- Worker (src/workers): parsing de M3U/JSON/.torrent y disponibilidad de piezas,
+  |     con fallback automático al hilo principal
   |
   +-- Service Worker (vite-plugin-pwa / Workbox + public/webtorrent-sw.js)
         +-- App shell y recursos estáticos
@@ -66,6 +67,10 @@ Sin React. Todo es testeable con Vitest sin DOM salvo donde se indica.
 | `media/`                | Detección de codecs con `canPlayType`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `tv/`                   | Detección de plataformas TV por user agent y navegación espacial con teclas de flecha.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `cleanup/`              | Registro central de tareas de limpieza y enlace con el ciclo de vida de la página.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+### `src/workers` — parsing y métricas fuera del hilo principal
+
+`parse.worker.ts` ejecuta `runJob` para `parse-m3u`, `parse-json-playlist`, `parse-torrent` (bencode + SHA-1) y `availability` (bitfields de peers). `ParseWorkerClient` crea el worker bajo demanda, aplica un tiempo máximo por trabajo y, si el navegador no soporta Workers de módulo o el worker falla, ejecuta el mismo `runJob` en el hilo principal: la funcionalidad es idéntica, solo cambia dónde se calcula. El modo activo se muestra en Diagnóstico.
 
 ### `src/state` — stores Zustand
 
@@ -163,5 +168,6 @@ Métricas: peers (`torrent.numPeers`), velocidad de descarga y subida, disponibi
 - **Nunca OPFS**: el store por defecto de WebTorrent en Chromium es el Origin Private File System (disco). OVtorrent siempre inyecta su propio store efímero (RAM o IndexedDB local) para no escribir vídeos en disco.
 - **Ventana por throttling, no por borrado de piezas**: ver «Sesión WebTorrent paso a paso».
 - **HLS nativo primero**: si el `<video>` entiende `.m3u8` (Safari, algunos TV boxes) no se carga hls.js (≈ 190 KB gzip). hls.js se importa bajo demanda solo cuando hace falta MediaSource; la ventana de búfer se traduce a `maxBufferLength`/`backBufferLength`.
+- **Memoria**: las listas largas se virtualizan (`VirtualList`, sin dependencias), el sondeo de métricas se pausa con la pestaña oculta, y en dispositivos con poca RAM se reduce la ventana y el límite automáticamente (opt-out).
 - **Panel TV simplificado**: en modo TV el reproductor muestra solo los controles esenciales y el resto tras «Más»; el foco va al botón de reproducir (configurable).
 - **CSP inyectada solo en build**: el servidor de desarrollo necesita scripts inline para React Fast Refresh.

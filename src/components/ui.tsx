@@ -172,11 +172,12 @@ export function Badge({
   children: ReactNode;
   tone?: 'neutral' | 'ok' | 'warn' | 'bad';
 }) {
+  // Opaque backgrounds so the text keeps ≥ 4.5:1 contrast in both themes (axe color-contrast).
   const t = {
-    neutral: 'bg-gray-500/15 text-[var(--ovt-text)]',
-    ok: 'bg-green-500/20 text-green-700 dark:text-green-300',
-    warn: 'bg-amber-500/20 text-amber-800 dark:text-amber-200',
-    bad: 'bg-red-500/20 text-red-700 dark:text-red-300',
+    neutral: 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100',
+    ok: 'bg-green-100 text-green-900 dark:bg-green-900 dark:text-green-100',
+    warn: 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100',
+    bad: 'bg-red-100 text-red-900 dark:bg-red-900 dark:text-red-100',
   }[tone];
   return (
     <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium tv:text-base ${t}`}>

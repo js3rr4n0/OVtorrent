@@ -4,7 +4,7 @@
  * so that fakes in tests implement exactly the same contract.
  */
 export interface WtWire {
-  peerPieces: { get(index: number): boolean };
+  peerPieces: { get(index: number): boolean; buffer?: Uint8Array };
   downloadSpeed(): number;
   type?: string;
 }
@@ -40,7 +40,7 @@ export interface WtTorrent {
   progress: number;
   ready: boolean;
   destroyed: boolean;
-  bitfield?: { get(index: number): boolean } | null;
+  bitfield?: { get(index: number): boolean; buffer?: Uint8Array } | null;
   announce?: string[];
   select(start: number, end: number, priority?: number, notify?: () => void): void;
   deselect(start: number, end: number): void;

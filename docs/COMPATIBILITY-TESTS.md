@@ -1,0 +1,35 @@
+# Pruebas de compatibilidad
+
+OVtorrent no afirma soporte: lo mide. Esta página describe qué se comprueba y cómo interpretar los resultados de `/#/diagnostics`.
+
+## Pruebas automáticas en el dispositivo (pantalla Diagnóstico)
+
+| Prueba                                                                                                                                                                                                 | Mecanismo                                                                      | Qué significa                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| APIs (WebRTC, DataChannel, MediaSource, ManagedMediaSource, HLS nativo, Service Worker, IndexedDB, localStorage, PiP, pantalla completa, Workers, File System Access, AudioTrackList, contexto seguro) | Detección de funciones                                                         | «no» en una API crítica desactiva la función correspondiente y se explica en el reproductor.                                                                                              |
+| Codecs (`canPlayType`)                                                                                                                                                                                 | `probably` / `maybe` / `no` por contenedor y codec                             | «maybe» no garantiza nada.                                                                                                                                                                |
+| Decodificación (MediaCapabilities `decodingInfo`)                                                                                                                                                      | Perfiles H.264/VP9/HEVC/AV1 a 1080p y 2160p, archivo y MediaSource             | `soportado`, `fluido` y `eficiente` según el navegador para ese perfil. Un perfil no fluido anticipa saltos; uno no eficiente, decodificación por software (consumo y calor en TV boxes). |
+| Memoria                                                                                                                                                                                                | `navigator.deviceMemory`, `performance.memory`                                 | ≤ 2 GB activa automáticamente la ventana «Ahorro de datos» y un límite de 64 MB (desactivable).                                                                                           |
+| Worker                                                                                                                                                                                                 | Ida y vuelta real con el worker de parsing/métricas                            | «hilo principal» indica que el navegador no permite Workers de módulo; todo sigue funcionando.                                                                                            |
+| Almacenamiento persistente                                                                                                                                                                             | `navigator.storage.persisted()`                                                | «no»: el navegador puede purgar los datos locales bajo presión de espacio.                                                                                                                |
+| Service Worker                                                                                                                                                                                         | Registro y control de la página                                                | Sin control no hay offline ni streaming P2P.                                                                                                                                              |
+| WebRTC (manual)                                                                                                                                                                                        | `RTCPeerConnection` local con DataChannel y recogida ICE durante 3 s, sin STUN | Sin candidatos host suele indicar WebRTC bloqueado por política o extensión.                                                                                                              |
+
+El informe completo se copia al portapapeles con «Copiar informe» (JSON) y nunca se envía a ningún sitio.
+
+## Pruebas automáticas del proyecto
+
+- **Unitarias** (`npm run test`): detección de capacidades con y sin APIs, probes de MediaCapabilities con API ausente, respuestas simuladas y errores; prueba WebRTC con `RTCPeerConnection` falso; política de memoria.
+- **End-to-end** (`npm run test:e2e`): Chromium headless con streaming P2P real, Service Worker, offline, importaciones, subtítulos, modo TV, auditoría axe. En CI (`.github/workflows/ci.yml`) se instala Chromium con `npx playwright install --with-deps chromium`.
+
+## Matriz orientativa
+
+| Plataforma                                  | P2P (WebTorrent)                    | HLS             | Archivos locales / URLs | Observaciones                                                      |
+| ------------------------------------------- | ----------------------------------- | --------------- | ----------------------- | ------------------------------------------------------------------ |
+| Chrome / Edge / Chromium escritorio         | Sí                                  | hls.js          | Sí                      | HEVC/AV1 según hardware.                                           |
+| Firefox escritorio                          | Sí                                  | hls.js          | Sí                      | Sin File System Access ni `deviceMemory`.                          |
+| Safari macOS / iOS ≥ 17                     | Sí (ReadableStream en SW requerido) | Nativo          | Sí                      | AudioTrackList disponible; variante HLS decidida por el navegador. |
+| Android TV / Google TV / Fire TV (Chromium) | Normalmente sí                      | hls.js          | Sí                      | Verificar MediaCapabilities para 4K; usar presets conservadores.   |
+| Tizen / webOS                               | Varía por generación                | Nativo o hls.js | Sí                      | Ejecutar Diagnóstico en el propio televisor.                       |
+
+Esta matriz no sustituye a la pantalla de diagnóstico: cada dispositivo debe comprobarse.

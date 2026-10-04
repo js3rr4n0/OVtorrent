@@ -102,6 +102,8 @@ export const settingsSchema = z
         estimateBitrateKbps: z.number().int().min(100).max(200_000),
         maxPeers: z.number().int().min(1).max(200),
         maxConcurrentRequests: z.number().int().min(1).max(64),
+        /** Reduce window and memory limit automatically on devices with ≤ 2 GB. */
+        autoLowMemory: z.boolean().optional().default(true),
       })
       .strict(),
     tv: z
@@ -153,6 +155,7 @@ export const DEFAULT_SETTINGS: Settings = {
     estimateBitrateKbps: 5000,
     maxPeers: 30,
     maxConcurrentRequests: 8,
+    autoLowMemory: true,
   },
   tv: {
     mode: 'auto',

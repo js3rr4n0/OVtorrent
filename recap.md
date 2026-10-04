@@ -219,3 +219,81 @@ Fase 3: importación M3U/M3U8, HLS multivariant, selección de calidad, subtítu
 ### Tareas pendientes
 
 - **Fase 4**: optimización de memoria, Worker para parsing y métricas, exportación completa de configuración, diagnóstico ampliado, pruebas de compatibilidad, auditoría de seguridad y accesibilidad, carpetas locales con File System Access API.
+
+---
+
+## 2026-10-04 — Fase 4 completada
+
+### Fase completada
+
+Fase 4: optimización de memoria, Worker para parsing y métricas, exportación completa de configuración, diagnóstico ampliado, pruebas de compatibilidad, auditoría de seguridad y auditoría de accesibilidad. Además se cerró la tarea pendiente de carpetas locales (File System Access API con fallback clásico).
+
+### Archivos creados
+
+- `src/workers/protocol.ts` (trabajos, respuestas, disponibilidad por bitfields), `jobs.ts` (`runJob`), `parse.worker.ts` (Worker de módulo), `workerClient.ts` (`ParseWorkerClient` con tiempo máximo y fallback al hilo principal), `__tests__/worker.test.ts`.
+- `src/core/memory/memoryPolicy.ts` (perfil de memoria y plan de búfer efectivo) y `__tests__/memoryPolicy.test.ts`.
+- `src/core/compat/mediaCapabilities.ts` (sondas de decodificación por perfil), `webrtcProbe.ts` (autoprueba WebRTC local sin STUN), `__tests__/compat.test.ts`.
+- `src/components/VirtualList.tsx` (lista virtualizada sin dependencias, semántica de lista y foco visible).
+- `src/features/diagnostics/extendedReport.ts`, `ExtendedDiagnostics.tsx` (memoria, worker, almacenamiento persistente, Service Worker, tabla MediaCapabilities, botón «Probar WebRTC»).
+- `src/features/settings/exportSections.ts` (exportación por secciones, vista previa de bundles).
+- `src/features/import/folderScan.ts`, `FolderImport.tsx` (carpetas locales: `showDirectoryPicker` o `<input webkitdirectory>`; límites de 500 archivos y 6 niveles; playlist con el nombre de la carpeta).
+- `src/test/audit/security.test.ts` (auditoría de seguridad estática ejecutada con los tests), `src/features/__tests__/phase4.test.tsx`.
+- `e2e/a11y.spec.ts` (axe-core en todas las rutas, modo TV y reproductor).
+- `docs/SECURITY-AUDIT.md`, `docs/ACCESSIBILITY-AUDIT.md`, `docs/COMPATIBILITY-TESTS.md`.
+
+### Archivos modificados
+
+- `package.json` / `package-lock.json`: `@axe-core/playwright` y `@testing-library/dom` (desarrollo); Vitest actualizado a 4.x para resolver el aviso de `@vitest/mocker`. La instalación requirió `--legacy-peer-deps` por un fallo de npm 10 (`edgesOut`) al resolver los peers opcionales de Vitest 4.
+- `tsconfig.app.json` / `tsconfig.node.json`: el test de auditoría (Node) se compila con el tsconfig de Node.
+- `src/core/schemas/settings.ts`: `buffer.autoLowMemory` (opcional, por defecto activado).
+- `src/core/streaming/webtorrent/WebTorrentStreamingEngine.ts`: plan de búfer efectivo (memoria), disponibilidad calculada en el Worker a partir de bitfields serializados (`bitfieldBytes`), sondeo reducido con la pestaña oculta; `types.ts` y fake ampliados.
+- `src/core/streaming/hls/HlsStreamingEngine.ts`: plan de búfer efectivo.
+- `src/features/player/usePlaybackSession.ts`: métricas pausadas con la pestaña oculta.
+- `src/features/library/LibraryPage.tsx`: lista virtualizada a partir de 80 elementos.
+- `src/features/import/JsonPlaylistImport.tsx`, `M3uImport.tsx`, `TorrentFileImport.tsx`: parsing a través del Worker; `LocalFileImport.tsx` incluye la importación de carpetas; `ImportPage.tsx`.
+- `src/features/settings/StorageSettingsPage.tsx` (secciones a exportar, vista previa antes de aplicar la importación), `PlaybackSettingsPage.tsx` (reducción automática en poca memoria).
+- `src/features/diagnostics/DiagnosticsPage.tsx` (informe ampliado incluido en «Copiar informe»).
+- `src/components/ConfirmDialog.tsx` (devuelve el foco al disparador al cerrar), `src/components/ui.tsx` (colores de `Badge` con contraste AA, hallazgo de la auditoría axe).
+- Documentación: README, ARCHITECTURE, TESTING, LICENSES, LOCAL-STORAGE, TV-COMPATIBILITY.
+
+### Funcionalidades implementadas
+
+- Worker de parsing y métricas (M3U, JSON, `.torrent` con hash SHA-1, disponibilidad de piezas) con fallback transparente al hilo principal y tiempo máximo por trabajo; estado visible en Diagnóstico.
+- Optimización de memoria: ventana y límite reducidos automáticamente en dispositivos con ≤ 2 GB (con aviso y opt-out), listas virtualizadas, sondeo de métricas pausado en pestañas ocultas, bitfields copiados fuera del hilo principal para la disponibilidad.
+- Exportación completa y selectiva (ajustes, biblioteca, playlists, favoritos, historial) y vista previa validada antes de aplicar una importación.
+- Diagnóstico ampliado: memoria del dispositivo y heap JS, modo del worker con ida y vuelta, almacenamiento persistente, estado del Service Worker, tabla de decodificación MediaCapabilities (H.264/VP9/HEVC/AV1 a 1080p y 2160p, archivo y MediaSource) con resumen de limitaciones, autoprueba WebRTC manual sin STUN.
+- Carpetas locales con File System Access API o selector clásico.
+- Auditoría de seguridad: test estático de patrones prohibidos, CSP, `index.html`, licencias de producción y Service Worker de streaming; `npm audit` analizado y documentado.
+- Auditoría de accesibilidad: axe-core en todas las pantallas, modo TV y reproductor sin violaciones graves; foco devuelto al cerrar diálogos; contraste de etiquetas corregido.
+
+### Decisiones arquitectónicas
+
+- El Worker ejecuta exactamente el mismo `runJob` que el fallback: ninguna función depende de que exista un Worker.
+- La disponibilidad se calcula sobre copias de los bitfields (bytes MSB-first) en lugar de recorrer objetos de WebTorrent en el hilo principal.
+- La reducción por poca memoria es un «plan efectivo» calculado al crear la sesión y siempre notificado; los ajustes del usuario no se modifican.
+- Las auditorías son ejecutables: fallan la suite si reaparece un patrón prohibido o una violación axe grave.
+
+### Limitaciones conocidas
+
+- `npm audit` mantiene un aviso en `ip` (vía `bittorrent-tracker` → `webtorrent`) que no alcanza al bundle del navegador; documentado en `docs/SECURITY-AUDIT.md`.
+- `performance.memory` y `deviceMemory` solo existen en navegadores Chromium; en otros se muestra «no expuesto».
+- Las pruebas con lectores de pantalla en dispositivos reales siguen pendientes.
+- La instalación limpia necesita `npm install --legacy-peer-deps` con npm 10 (ver arriba).
+
+### Pruebas ejecutadas
+
+- `npm run lint`, `npm run typecheck`: sin errores.
+- `npm run test` (Vitest 4): 21 archivos, 122 tests, todos pasan (incluida la auditoría de seguridad estática).
+- `npm run build`: Worker de parsing como chunk independiente.
+- `npm run test:e2e`: 23 escenarios Playwright (aplicación, P2P real y 11 auditorías axe), todos pasan tras corregir el contraste de `Badge`.
+- `npm audit --omit=dev`: 4 avisos transitivos de `ip` sin impacto en el navegador; `npm audit` sin avisos de desarrollo tras actualizar Vitest.
+
+### Comandos utilizados
+
+`npm install --legacy-peer-deps`, `npm install -D @axe-core/playwright @testing-library/dom --legacy-peer-deps`, `npm audit`, `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run test:e2e`.
+
+### Tareas pendientes
+
+- Pruebas con lectores de pantalla (NVDA, VoiceOver, TalkBack) en dispositivos reales.
+- Revisar `npm audit` en cada actualización de `webtorrent` y `hls.js`.
+- Posibles mejoras futuras fuera del plan: anuncios `aria-live` más granulares en el reproductor, virtualización del detalle de playlist, e2e de HLS real cuando el entorno disponga de un codificador.

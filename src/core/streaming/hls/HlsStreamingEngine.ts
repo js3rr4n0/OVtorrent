@@ -1,5 +1,6 @@
 import type { MediaItem } from '../../schemas/media';
-import { resolveBufferWindow, type Settings } from '../../schemas/settings';
+import type { Settings } from '../../schemas/settings';
+import { planBuffer } from '../../memory/memoryPolicy';
 import { hasManagedMediaSource, hasMseForHls, hasNativeHls } from '../capabilities';
 import { describeMediaError, readAudioTracks, selectAudioTrack } from '../HtmlMediaEngine';
 import { createSessionId } from '../sessionId';
@@ -196,8 +197,9 @@ class HlsSession implements StreamingSession {
         'hls.js no es compatible con este navegador (MediaSource no utilizable).',
       );
     }
-    const window = resolveBufferWindow(this.settings);
-    const hls = new Hls(hlsConfigFor(window, this.settings.quality, hasManagedMediaSource()));
+    const plan = planBuffer(this.settings);
+    if (plan.adjustedReason) this.warnings.set('memory-plan', plan.adjustedReason);
+    const hls = new Hls(hlsConfigFor(plan.window, this.settings.quality, hasManagedMediaSource()));
     this.hls = hls;
     const onManifest = () => {
       const levels = hls.levels;

@@ -38,7 +38,9 @@ No todos los TV boxes soportan WebRTC, MediaSource Extensions, PWA instalable o 
 
 - Code splitting por ruta y carga diferida de pantallas.
 - Métricas a 1 Hz y uso de búfer cada 2 s.
-- Límites configurables de memoria, peers y solicitudes concurrentes.
+- Límites configurables de memoria, peers y solicitudes concurrentes; reducción automática en dispositivos con ≤ 2 GB.
+- Parsing de listas/torrents y cálculo de disponibilidad en un Worker (fallback al hilo principal).
+- Listas largas virtualizadas y sondeo pausado en segundo plano.
 - Sin librerías grandes innecesarias; sin almacenar el vídeo completo.
 
 ## Teclas reconocidas

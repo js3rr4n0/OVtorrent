@@ -75,12 +75,6 @@ export function ImportPage() {
         {tab === 'm3u' ? <M3uImport onImported={onImported} /> : null}
         {tab === 'json' ? <JsonPlaylistImport onImported={onImported} /> : null}
       </div>
-      <div className="mt-6">
-        <Notice kind="info" title="Carpetas locales">
-          La importación de carpetas completas mediante File System Access API se añadirá cuando se
-          amplíe la compatibilidad; mientras tanto puedes seleccionar varios archivos a la vez.
-        </Notice>
-      </div>
     </div>
   );
 }

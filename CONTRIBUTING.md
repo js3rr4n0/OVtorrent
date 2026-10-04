@@ -14,7 +14,7 @@ Gracias por tu interés. Estas reglas mantienen el proyecto fiel a sus restricci
 ## Flujo de trabajo
 
 ```bash
-npm install
+npm install   # con npm 10 puede requerir: npm install --legacy-peer-deps (peers opcionales de Vitest 4)
 npm run dev
 npm run lint && npm run typecheck && npm run test && npm run build
 npm run test:e2e   # opcional, requiere Chromium de Playwright
