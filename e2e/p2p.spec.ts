@@ -228,7 +228,9 @@ test('restarts the torrent in place when the memory limit is hit and keeps playi
     .toBeGreaterThan(Math.max(atRestart + 2, 5));
   expect(await page.evaluate(() => document.querySelector('video')?.error)).toBeNull();
   await expect(page.getByText(/No se pudo iniciar la reproducción/)).toHaveCount(0);
-  await expect(page.getByText(/Error de red|no pudo decodificar|Formato o fuente no soportada/)).toHaveCount(0);
+  await expect(
+    page.getByText(/Error de red|no pudo decodificar|Formato o fuente no soportada/),
+  ).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Detener' }).click();
   await seederContext.close();
