@@ -1,0 +1,115 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant tv (&:where(.tv-mode, .tv-mode *));
+
+:root {
+  --ovt-bg: #f6f7fb;
+  --ovt-surface: #ffffff;
+  --ovt-text: #0b1020;
+  --ovt-muted: #4b5563;
+  --ovt-accent: #2563eb;
+  --ovt-border: #d6d9e2;
+  color-scheme: light;
+}
+
+.dark {
+  --ovt-bg: #0b1020;
+  --ovt-surface: #141a2e;
+  --ovt-text: #f3f4f6;
+  --ovt-muted: #a3aac2;
+  --ovt-accent: #60a5fa;
+  --ovt-border: #2a3350;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ovt-bg);
+  color: var(--ovt-text);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Noto Sans',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible focus everywhere: mandatory for keyboard and D-pad users. */
+:focus-visible {
+  outline: 3px solid var(--ovt-accent);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+.tv-mode :focus-visible,
+.tv-mode :focus {
+  outline: 4px solid #fbbf24;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.35);
+}
+
+/* TV mode: larger type, bigger targets, higher contrast, no hover reliance. */
+.tv-mode {
+  font-size: 1.25rem;
+  --ovt-border: #6b7280;
+}
+.tv-mode.high-contrast {
+  --ovt-bg: #000000;
+  --ovt-surface: #111111;
+  --ovt-text: #ffffff;
+  --ovt-muted: #d1d5db;
+  --ovt-accent: #ffd60a;
+}
+.tv-mode button,
+.tv-mode a,
+.tv-mode input,
+.tv-mode select {
+  min-height: 48px;
+  min-width: 48px;
+}
+.tv-mode .ovt-nav a {
+  padding: 0.9rem 1.2rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.ovt-surface {
+  background: var(--ovt-surface);
+  border: 1px solid var(--ovt-border);
+}
+.ovt-muted {
+  color: var(--ovt-muted);
+}
+.ovt-accent {
+  color: var(--ovt-accent);
+}
+
+input[type='range'] {
+  accent-color: var(--ovt-accent);
+}
+
+video {
+  background: #000;
+}
+
+.sr-only-focusable:focus {
+  position: static;
+  width: auto;
+  height: auto;
+  clip: auto;
+  overflow: visible;
+}
