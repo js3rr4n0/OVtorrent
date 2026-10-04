@@ -16,6 +16,7 @@ import type {
 } from '../types';
 import { StreamingUnavailableError } from '../types';
 import { createEphemeralChunkStoreClass } from './EphemeralChunkStore';
+import { bridgeClient, reannounce, type BridgeClient } from './bridge/BridgeClient';
 import { planBuffer, type EffectiveBufferPlan } from '../../memory/memoryPolicy';
 import { parseWorker } from '../../../workers/workerClient';
 import type { WorkerJob } from '../../../workers/protocol';
@@ -42,7 +43,7 @@ export const NO_PEERS_MESSAGE =
 
 /** What the user can actually do when a swarm has no WebRTC peers. Honest: no proxy, no server. */
 export const NO_PEERS_GUIDANCE =
-  'Un navegador solo puede conectar con peers WebTorrent (WebRTC); los peers BitTorrent clásicos de este torrent no son accesibles. Para reproducirlo aquí hace falta al menos un peer web: por ejemplo, abrir el mismo magnet en un cliente híbrido como WebTorrent Desktop en otro dispositivo (actúa de puente con el enjambre clásico) o en otro navegador que ya lo tenga descargado.';
+  'Un navegador solo puede conectar con peers WebTorrent (WebRTC); los peers BitTorrent clásicos de este torrent no son accesibles. Solución: ejecuta el puente gratuito ovtorrent-bridge en tu PC o NAS (carpeta bridge/ del proyecto) y empareja este navegador con su código en Ajustes → Calidad y búfer → Puente; a partir de ahí basta con pegar el magnet y reproducir. Alternativa: abrir el magnet en un cliente híbrido como WebTorrent Desktop.';
 
 export interface TrackerStatus {
   /** Trackers announced to (WebSocket only). */
@@ -65,6 +66,8 @@ export interface WebTorrentEngineDeps {
   now?: () => number;
   /** Buffer plan resolver (memory policy by default; injected in tests). */
   planBuffer?: (settings: Settings) => EffectiveBufferPlan;
+  /** Bridge client (shared singleton by default; injected in tests). */
+  bridge?: BridgeClient;
   /** Availability job runner (worker by default; injected in tests). */
   runAvailability?: (job: AvailabilityJob) => Promise<{ availability: number; sampled: number }>;
 }
@@ -186,6 +189,8 @@ class WebTorrentSession implements StreamingSession {
   private startedAt = 0;
   private restarts = 0;
   private trackerStatus: TrackerStatus = { websocket: 0, responded: 0, failed: [], ignored: 0 };
+  private lastReannounceAt = 0;
+  private unsubscribeBridge: (() => void) | null = null;
   private announcedOnce = false;
   private bytesInStore = 0;
   private lastCriticalHead = -1;
@@ -259,10 +264,33 @@ class WebTorrentSession implements StreamingSession {
     this.warn(`warning:${msg.slice(0, 40)}`, `Aviso del protocolo: ${msg}`);
   }
 
+  private bridge(): BridgeClient {
+    return this.deps.bridge ?? bridgeClient;
+  }
+
+  /**
+   * The bridge only answers WebRTC offers, so the browser must offer after
+   * the bridge joined the swarm: re-announce now (forced) or every 15 s while
+   * the bridge holds the torrent and we still have no peers.
+   */
+  private reofferToBridge(force: boolean) {
+    const torrent = this.torrent;
+    if (!torrent || torrent.destroyed) return;
+    const state = this.bridge().getState();
+    if (!state.code || !state.connected) return;
+    if (!force) {
+      if (torrent.numPeers > 0 || !this.bridge().statusFor(torrent.infoHash)) return;
+      if (this.now() - this.lastReannounceAt < 15_000) return;
+    }
+    this.lastReannounceAt = this.now();
+    if (reannounce(torrent)) this.emit();
+  }
+
   /** Human-readable discovery status shown while connecting. */
   private discoveryStatus(): string {
     const t = this.trackerStatus;
     const peers = this.torrent?.numPeers ?? 0;
+    const bridge = this.bridge().getState();
     const parts = [
       `Trackers WebSocket: ${t.websocket} (${t.responded} respondieron${t.failed.length ? `, ${t.failed.length} sin conexión` : ''})`,
     ];
@@ -271,6 +299,21 @@ class WebTorrentSession implements StreamingSession {
         `${t.ignored} trackers UDP/HTTP del magnet ignorados: un navegador no puede usarlos`,
       );
     parts.push(`Peers web: ${peers}`);
+    if (bridge.code) {
+      if (!bridge.connected)
+        parts.push('Puente: emparejando… (¿está en marcha ovtorrent-bridge con el mismo código?)');
+      else {
+        const hash = /urn:btih:([0-9a-z]{32,40})/i
+          .exec(this.source.item.source)?.[1]
+          ?.toLowerCase();
+        const st = hash ? this.bridge().statusFor(hash) : undefined;
+        parts.push(
+          st
+            ? `Puente ${bridge.name ?? ''}: ${st.done ? 'completado' : `descargando ${Math.round(st.progress * 100)} %`} · peers clásicos ${st.numPeers}`
+            : `Puente ${bridge.name ?? ''}: conectado, solicitando el torrent…`,
+        );
+      }
+    }
     return parts.join(' · ');
   }
 
@@ -324,6 +367,11 @@ class WebTorrentSession implements StreamingSession {
         );
       }, METADATA_TIMEOUT_MS);
       this.trackerStatus = countTrackers(this.source.item.source, trackersFor(this.settings));
+      this.bridge().requestMagnet(this.source.item.source);
+      this.unsubscribeBridge?.();
+      this.unsubscribeBridge = this.bridge().onAdded((hash) => {
+        if (this.torrent && this.torrent.infoHash === hash) this.reofferToBridge(true);
+      });
       const existing = client.torrents.find(
         (t) => !t.destroyed && this.source.item.source.toLowerCase().includes(t.infoHash),
       );
@@ -497,6 +545,7 @@ class WebTorrentSession implements StreamingSession {
     }
     this.scheduleCritical(false);
     this.checkMemoryLimit();
+    this.reofferToBridge(false);
     this.emit();
   }
 
@@ -576,6 +625,8 @@ class WebTorrentSession implements StreamingSession {
     const torrent = this.torrent;
     this.torrent = null;
     for (const fn of this.torrentCleanupFns.splice(0)) fn();
+    this.unsubscribeBridge?.();
+    this.unsubscribeBridge = null;
     this.announcedOnce = false;
     this.lastCriticalHead = -1;
     if (this.client && this.throttled) {

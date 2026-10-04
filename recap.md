@@ -317,3 +317,44 @@ Al importar un magnet con solo trackers `udp://`, el reproductor mostraba un avi
 ### Lo que no se puede arreglar
 
 Un navegador no puede conectar con peers BitTorrent clásicos. Si el enjambre no tiene peers WebRTC, el torrent no se reproduce en la web; la aplicación lo dice claramente y no simula lo contrario (regla de honestidad técnica).
+
+---
+
+## 2026-10-04 — Puente autoalojado: «pegar un magnet y reproducir»
+
+### Petición
+
+El usuario pidió que baste con pegar cualquier magnet y reproducir. Un navegador no puede alcanzar los enjambres BitTorrent clásicos (TCP/UDP), así que la única solución honesta es un puente que corra fuera del navegador. Se ha construido como componente **opcional y autoalojado**, documentando que es una excepción deliberada a la restricción «sin procesos fuera del navegador» del prompt maestro; la aplicación web sigue funcionando sin él.
+
+### Archivos creados
+
+- `bridge/` (paquete Node.js independiente, MIT): `package.json`, `src/protocol.mjs` (hash de encuentro, mensajes JSON, validación), `src/extension.mjs` (extensión BitTorrent `ovt_bridge`), `src/bridge.mjs` (cliente WebTorrent híbrido: TCP/uTP/DHT para el enjambre clásico y WebRTC para el navegador; descarga secuencial a disco; estado cada 2 s; **solo responde ofertas WebRTC**), `src/cli.mjs` (`--code`, `--dir`, `--tracker`, `--name`), `test/protocol.test.mjs`.
+- `src/core/streaming/webtorrent/bridge/protocol.ts` (mismo protocolo en el navegador, SHA-1 con WebCrypto), `BridgeClient.ts` (torrent de encuentro en el cliente compartido, extensión, cola de magnets, estado, re-anuncio periódico mientras no hay puente), `index.ts`, `__tests__/bridge.test.ts`.
+- `src/app/bridgeBoot.ts` (empareja según `p2p.bridgeCode`), `src/state/bridgeStore.ts`.
+- `e2e/bridge.spec.ts`, `docs/BRIDGE.md`.
+
+### Archivos modificados
+
+- `src/core/schemas/settings.ts`: `p2p.bridgeCode`.
+- `WebTorrentStreamingEngine.ts`: envía cada magnet al puente, se re-anuncia con ofertas nuevas cuando el puente confirma (`added`) y cada 15 s mientras el puente tenga el torrent y no haya peers; estado «Puente: descargando N % · peers clásicos M»; guía actualizada.
+- `types.ts` (`discovery.tracker.update`), `App.tsx`, `PlaybackSettingsPage.tsx` (tarjeta Puente con código, estado e instrucciones), `e2e/types.d.ts`, `.github/workflows/ci.yml` (tests del puente).
+- Documentación: README, ARCHITECTURE, STREAMING-LIMITATIONS, PRIVACY, LICENSES, TESTING, SECURITY-AUDIT, CONTRIBUTING.
+
+### Hallazgos técnicos
+
+- WebTorrent 2.x en Node fallaba al añadir magnets (`arr2hex(undefined)`); el puente usa WebTorrent 3.
+- uTP retrasaba segundos cada conexión a peers clásicos; desactivado (TCP).
+- «Glare» WebRTC: si navegador y puente emiten ofertas a la vez, cada lado acaba con dos peers del mismo id, descarta uno y la pareja superviviente nunca coincide. Solución: el puente nunca ofrece (`WebSocketTracker.prototype._generateOffers` → `[]`) y el navegador vuelve a anunciarse cuando el puente confirma el torrent.
+- `node-datachannel` en este entorno solo expone un candidato host de prueba (`192.0.2.2`); aun así la conexión se establece por los candidatos del navegador.
+
+### Pruebas ejecutadas
+
+- `cd bridge && npm test`: 3 tests.
+- `npm run test`: 131 tests (incluye `BridgeClient`).
+- `npm run test:e2e -- e2e/bridge.spec.ts`: el navegador pega un magnet de enjambre clásico (solo tracker HTTP), el puente lo descarga por TCP (`peer tcpOutgoing`) y lo sirve por WebRTC (`peer webrtc`), y el vídeo reproduce.
+
+### Limitaciones
+
+- El puente no transcodifica: AV1/HEVC/Atmos/MKV que el navegador no decodifique seguirán sin reproducirse.
+- Requiere Node.js ≥ 20 en una máquina del usuario y, entre redes distintas, conectividad WebRTC (STUN).
+- Instalación del puente: `cd bridge && npm install` (en este entorno, `--legacy-peer-deps` no fue necesario).

@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
-import { Button, Card, Field, Input, Notice, PageHeader, Select, Toggle } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  Input,
+  Notice,
+  PageHeader,
+  Select,
+  Toggle,
+} from '@/components/ui';
+import { useBridgeState } from '@/state/bridgeStore';
 import {
   DEFAULT_WEBSOCKET_TRACKERS,
   isWebSocketTracker,
@@ -331,6 +342,7 @@ export function PlaybackSettingsPage() {
 }
 
 function P2pCard() {
+  const bridge = useBridgeState();
   const p2p = useSettingsStore((s) => s.settings.p2p);
   const update = useSettingsStore((s) => s.update);
   const [draft, setDraft] = useState(p2p.customTrackers.join('\n'));
@@ -406,6 +418,41 @@ function P2pCard() {
         />
       </Field>
       <Button onClick={saveTrackers}>Guardar trackers</Button>
+      <h3 className="mt-6 mb-2 text-base font-semibold">
+        Puente OVtorrent (opcional, autoalojado)
+      </h3>
+      <p className="ovt-muted mb-2 text-sm tv:text-lg">
+        Un navegador solo alcanza peers WebRTC. El puente es un programa gratuito que ejecutas tú en
+        un PC o NAS (carpeta <code>bridge/</code> del proyecto): se conecta a los peers BitTorrent
+        clásicos y te sirve el contenido por WebRTC. Con el puente emparejado basta con pegar un
+        magnet y pulsar reproducir.
+      </p>
+      <pre className="ovt-surface mb-3 overflow-x-auto rounded p-2 text-xs">{`cd bridge && npm install && npm start -- --code TU-CODIGO`}</pre>
+      <Field
+        label="Código de emparejamiento"
+        htmlFor="bridge-code"
+        hint="El mismo que muestra el puente al arrancar (mínimo 6 caracteres). Vacío = sin puente."
+      >
+        <Input
+          id="bridge-code"
+          value={p2p.bridgeCode}
+          maxLength={64}
+          autoComplete="off"
+          onChange={(e) => update((s) => ({ ...s, p2p: { ...s.p2p, bridgeCode: e.target.value } }))}
+        />
+      </Field>
+      <p className="text-sm tv:text-lg" role="status">
+        Estado del puente:{' '}
+        {!p2p.bridgeCode.trim() ? (
+          <Badge>desactivado</Badge>
+        ) : bridge.connected ? (
+          <Badge tone="ok">conectado{bridge.name ? ` (${bridge.name})` : ''}</Badge>
+        ) : (
+          <Badge tone="warn">emparejando… arranca el puente con este código</Badge>
+        )}
+        {bridge.torrents.length > 0 ? ` · ${bridge.torrents.length} torrent(s) en el puente` : ''}
+        {bridge.lastError ? ` · ${bridge.lastError}` : ''}
+      </p>
       <div className="mt-3">
         <Notice kind="info">
           Al reproducir, el navegador se conecta a los trackers WebSocket y a otros peers mediante

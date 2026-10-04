@@ -44,7 +44,7 @@ La mayoría de los magnets que circulan solo declaran trackers `udp://` o `http:
 - se anuncian los trackers WebSocket configurados (por defecto `tracker.openwebtorrent.com`, `tracker.webtorrent.dev`, `tracker.files.fm` y `tracker.novage.com.ua`), que solo conocen peers **WebRTC**;
 - si ningún peer WebRTC tiene el torrent, no llegan ni los metadatos: el reproductor muestra «Esta fuente no tiene peers compatibles con el transporte web disponible en este navegador» y el estado de trackers.
 
-Qué puede hacer el usuario (sin que la aplicación añada servidores ni proxies): abrir el mismo magnet en un cliente **híbrido** como WebTorrent Desktop en otro dispositivo o en un navegador que ya tenga el contenido. Esos clientes se conectan tanto a peers clásicos como a peers WebRTC y actúan de puente para el navegador. OVtorrent no incluye ni recomienda proxies, relays ni servicios de pago para ocultar esta limitación.
+Qué puede hacer el usuario (sin que la aplicación añada servidores ni proxies): ejecutar el **puente autoalojado** incluido en `bridge/` (ver `BRIDGE.md`) en un PC o NAS propio y emparejarlo con un código; a partir de ahí basta con pegar el magnet y reproducir. Alternativa manual: abrir el mismo magnet en un cliente híbrido como WebTorrent Desktop en otro dispositivo. Esos clientes se conectan tanto a peers clásicos como a peers WebRTC y actúan de puente para el navegador. OVtorrent no incluye ni recomienda proxies, relays ni servicios de pago para ocultar esta limitación.
 
 ## Cómo funciona la ventana temporal con WebTorrent
 

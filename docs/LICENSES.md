@@ -32,6 +32,13 @@ OVtorrent se publica bajo licencia **MIT** (ver `LICENSE`). Todas las dependenci
 | bittorrent-tracker (server, solo en e2e; dependencia de webtorrent)                                    | MIT        |
 | @axe-core/playwright, axe-core (solo e2e)                                                              | MPL-2.0    | Auditoría de accesibilidad automatizada |
 
+## Puente opcional (`bridge/`, paquete independiente)
+
+| Paquete              | Licencia | Uso                                  |
+| -------------------- | -------- | ------------------------------------ |
+| webtorrent (Node.js) | MIT      | Cliente híbrido TCP/uTP/DHT + WebRTC |
+| node-datachannel     | MPL-2.0  | Implementación WebRTC para Node.js   |
+
 ## Previstas en fases posteriores
 
 | Paquete                              | Licencia   | Fase |

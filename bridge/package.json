@@ -1,0 +1,22 @@
+{
+  "name": "ovtorrent-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Puente opcional y autoalojado: conecta con peers BitTorrent clásicos y sirve el contenido a OVtorrent (navegador) por WebRTC. Sin servidores de terceros.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "ovtorrent-bridge": "./src/cli.mjs"
+  },
+  "scripts": {
+    "start": "node src/cli.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "node-datachannel": "^0.27.0",
+    "webtorrent": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

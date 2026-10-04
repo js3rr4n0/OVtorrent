@@ -42,6 +42,8 @@ export interface WtTorrent {
   destroyed: boolean;
   bitfield?: { get(index: number): boolean; buffer?: Uint8Array } | null;
   announce?: string[];
+  /** torrent-discovery instance; `tracker.update()` re-announces with fresh WebRTC offers. */
+  discovery?: { tracker?: { update?: () => void } | null } | null;
   select(start: number, end: number, priority?: number, notify?: () => void): void;
   deselect(start: number, end: number): void;
   critical(start: number, end: number): void;

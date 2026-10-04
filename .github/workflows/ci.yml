@@ -19,6 +19,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+      - name: Bridge (unit)
+        run: cd bridge && npm ci && npm test
       - name: End-to-end (Chromium)
         run: |
           npx playwright install --with-deps chromium

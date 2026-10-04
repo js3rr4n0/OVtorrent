@@ -25,6 +25,16 @@ No describimos el producto como «no descarga nada»: toda reproducción necesit
 | Open source                      | Licencia MIT; dependencias MIT/Apache-2.0 ([docs/LICENSES.md](docs/LICENSES.md)).                                                                                                                                   |
 | Offline                          | La interfaz y la configuración funcionan sin red (Service Worker con app shell). El streaming P2P y las URLs remotas necesitan Internet.                                                                            |
 
+## Pegar un magnet y reproducir: el puente
+
+Un navegador solo alcanza peers WebRTC, así que la mayoría de los magnets «normales» (enjambres TCP/UDP) no tienen peers accesibles desde la web. Para que baste con pegar el magnet y pulsar reproducir, el repositorio incluye un **puente opcional y autoalojado** (`bridge/`): un programa gratuito que ejecutas en tu PC o NAS, habla BitTorrent clásico y sirve el contenido al navegador por WebRTC, sin servidores de terceros.
+
+```bash
+cd bridge && npm install && npm start -- --code mi-codigo
+```
+
+Introduce el código en Ajustes → Calidad y búfer → Puente. Detalles, privacidad y límites en [docs/BRIDGE.md](docs/BRIDGE.md). La aplicación web sigue funcionando sin el puente para fuentes con peers web, archivos locales, URLs y HLS.
+
 ## Limitaciones técnicas reales
 
 Se muestran en la aplicación (`/about`, `/diagnostics`) y en [docs/STREAMING-LIMITATIONS.md](docs/STREAMING-LIMITATIONS.md). Resumen:

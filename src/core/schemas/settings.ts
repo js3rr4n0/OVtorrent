@@ -61,6 +61,8 @@ export const p2pSettingsSchema = z
     noPeersTimeoutSeconds: z.number().int().min(5).max(300),
     /** Restart the torrent (freeing memory) when downloaded data exceeds the memory limit. */
     restartOnMemoryLimit: z.boolean(),
+    /** Pairing code of the optional self-hosted bridge (empty = disabled). */
+    bridgeCode: z.string().max(64).optional().default(''),
   })
   .strict();
 export type P2pSettings = z.infer<typeof p2pSettingsSchema>;
@@ -71,6 +73,7 @@ export const DEFAULT_P2P_SETTINGS: P2pSettings = {
   uploadEnabled: true,
   noPeersTimeoutSeconds: 30,
   restartOnMemoryLimit: true,
+  bridgeCode: '',
 };
 
 export const settingsSchema = z

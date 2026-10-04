@@ -35,6 +35,14 @@ Comando de verificación: `npm audit --omit=dev` (producción) y `npm audit` (to
 - **Worker de parsing**: recibe únicamente datos estructurados (texto, `ArrayBuffer`, bitfields); los resultados vuelven a validarse en los stores antes de persistirse.
 - **Exportación/importación**: la vista previa valida el bundle completo (Zod + claves prohibidas) antes de aplicar nada; la importación sigue siendo local.
 
+## Puente opcional (`bridge/`)
+
+- Es un cliente BitTorrent completo que corre en la máquina del usuario; su superficie de red (TCP/uTP/DHT/trackers) es la de cualquier cliente de escritorio. No expone ningún puerto HTTP ni API: solo habla el protocolo BitTorrent y la extensión `ovt_bridge`.
+- El código de emparejamiento actúa como secreto compartido: quien lo conozca puede pedir descargas al puente. Se recomienda un código largo y aleatorio (el puente genera uno si no se indica).
+- Mensajes validados: solo JSON con campo `t` conocido; los magnets se validan antes de añadirse; el resto se ignora.
+- Nunca genera ofertas WebRTC (solo responde), lo que evita conexiones no solicitadas desde terceros que conozcan el hash de encuentro.
+- `npm audit` del paquete `bridge/` hereda el aviso de `ip` vía `bittorrent-tracker`; en Node sí se ejecuta ese código (clasificación de IPs privadas), pero el puente no acepta peticiones HTTP de terceros, por lo que no existe vector SSRF.
+
 ## Pendiente / recomendaciones
 
 - Revisar los avisos de `npm audit` tras cada actualización de `webtorrent` y `hls.js`.

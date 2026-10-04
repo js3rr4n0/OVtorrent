@@ -4,7 +4,7 @@ Gracias por tu interés. Estas reglas mantienen el proyecto fiel a sus restricci
 
 ## Reglas no negociables
 
-1. **100 % web y estática.** Nada que necesite un proceso fuera del navegador en producción: ni backend, ni API propia, ni base de datos de servidor, ni Electron/Tauri, ni extensiones.
+1. **100 % web y estática.** Nada que necesite un proceso fuera del navegador en producción: ni backend, ni API propia, ni base de datos de servidor, ni Electron/Tauri, ni extensiones. Única excepción, opcional y autoalojada por el usuario: el puente de `bridge/` (ver `docs/BRIDGE.md`); la aplicación debe seguir funcionando sin él.
 2. **Sin terceros obligatorios.** No añadas dependencias de servicios con cuenta, API key, pago, analítica o telemetría. Las dependencias npm deben ser open source con licencia compatible (MIT, Apache-2.0, BSD, ISC) y documentarse en `docs/LICENSES.md`.
 3. **Honestidad técnica.** No simules funcionalidades que el navegador no pueda garantizar. Si algo no es posible, implementa la interfaz de capacidad, degrada funcionalmente, muestra un mensaje claro y documenta la evolución futura.
 4. **Privacidad por defecto.** Nada sale del navegador salvo las conexiones P2P/HTTP necesarias para reproducir lo que el usuario pidió.

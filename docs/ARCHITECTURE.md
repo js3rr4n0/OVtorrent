@@ -157,6 +157,10 @@ Métricas: peers (`torrent.numPeers`), velocidad de descarga y subida, disponibi
 
 `TrackSelectors` (reproductor) consume esa API y pide al usuario un archivo local cuando no hay nada declarado. Las conversiones y object URLs se liberan al cambiar de pista o de elemento.
 
+## Puente opcional (fuera del navegador)
+
+`bridge/` contiene un paquete Node.js independiente (`ovtorrent-bridge`): cliente WebTorrent híbrido que descarga del enjambre clásico y siembra por WebRTC. El navegador (`src/core/streaming/webtorrent/bridge/`) se empareja con él mediante un torrent de encuentro derivado de un código y la extensión BitTorrent `ovt_bridge` (JSON). `WebTorrentSession` envía cada magnet al puente al añadirlo y muestra su progreso en el estado de conexión. Es la única pieza del proyecto que se ejecuta fuera del navegador, es opcional y la aloja el propio usuario; ver `BRIDGE.md`.
+
 ## Decisiones
 
 - **Vite + React + TypeScript** en lugar de Next.js: exportación estática trivial, sin riesgo de introducir rutas de servidor.
