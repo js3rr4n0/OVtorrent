@@ -92,6 +92,7 @@ export class FakeTorrent extends Emitter implements WtTorrent {
   ready = false;
   destroyed = false;
   announce: string[];
+  torrentFile: Uint8Array;
   calls: string[] = [];
   critical = (start: number, end: number) => {
     this.calls.push(`critical:${start}-${end}`);
@@ -107,6 +108,7 @@ export class FakeTorrent extends Emitter implements WtTorrent {
     this.name = spec.name;
     this.pieceLength = spec.pieceLength;
     this.announce = opts.announce ?? [];
+    this.torrentFile = new TextEncoder().encode(`fake-torrent-file:${spec.infoHash}`);
     let offset = 0;
     this.files = spec.files.map((f) => {
       const file = new FakeFile(f.name, f.length, offset, this);
@@ -163,6 +165,8 @@ export class FakeWebTorrentClient extends Emitter implements WtClient {
   torrents: FakeTorrent[] = [];
   /** Every torrent ever added, including destroyed ones. */
   added: FakeTorrent[] = [];
+  /** How each add() was identified: magnet URI or bencoded torrent file. */
+  addCalls: Array<'magnet' | 'torrentFile'> = [];
   destroyed = false;
   downloadRate = -1;
   uploadRate = -1;
@@ -176,7 +180,8 @@ export class FakeWebTorrentClient extends Emitter implements WtClient {
     opts: WtAddOptions = {},
     onTorrent?: (t: WtTorrent) => void,
   ): WtTorrent {
-    const id = typeof torrentId === 'string' ? torrentId : '';
+    const id = typeof torrentId === 'string' ? torrentId : new TextDecoder().decode(torrentId);
+    this.addCalls.push(typeof torrentId === 'string' ? 'magnet' : 'torrentFile');
     const spec = Object.values(this.specs).find((s) => id.toLowerCase().includes(s.infoHash));
     if (!spec) throw new Error('Torrent desconocido en el cliente falso');
     const t = new FakeTorrent(spec, opts);

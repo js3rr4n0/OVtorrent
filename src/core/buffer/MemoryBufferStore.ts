@@ -71,6 +71,14 @@ export class MemoryBufferStore implements EphemeralBufferStore {
     }
   }
 
+  async clearSession(sessionId: string): Promise<void> {
+    for (const [key, chunk] of this.chunks) {
+      if (chunk.sessionId !== sessionId) continue;
+      this.chunks.delete(key);
+      this.bytes -= chunk.data.byteLength;
+    }
+  }
+
   async clear(): Promise<void> {
     this.chunks.clear();
     this.bytes = 0;

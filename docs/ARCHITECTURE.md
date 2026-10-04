@@ -19,8 +19,8 @@ Navegador
   |     +-- StreamingEngine / StreamingSession (abstracción)
   |     +-- HtmlMediaEngine (archivos locales y URLs)
   |     +-- WebTorrentStreamingEngine (WebTorrent en navegador: WebRTC DataChannels
-  |         + trackers WebSocket; estrategia secuencial, piezas críticas, ventana con
-  |         throttling, reinicio por límite de memoria)
+  |         + trackers WebSocket; estrategia secuencial, selección solo de la ventana
+  |         del playhead, rangos acotados en el SW, reinicio en el sitio por memoria)
   |
   +-- Motor de reproducción
   |     +-- HTMLVideoElement, Blob URLs (archivos locales, URLs)
@@ -137,10 +137,10 @@ El modo predeterminado del búfer es `NoPersistenceBufferStore`: la aplicación 
 
 1. `createSession` comprueba capacidades (WebRTC DataChannel, Service Worker, contexto seguro).
 2. `metadata()` carga el bundle de WebTorrent (chunk diferido de ~220 KB), crea el cliente compartido de la pestaña (sin DHT, LSD, uTP ni UPnP: no existen en navegador) y añade el torrent con los trackers WebSocket configurados, `strategy: 'sequential'` y el store de piezas efímero. Resuelve cuando llegan los metadatos (lista de archivos). Si no llegan en 90 s, falla con «sin peers accesibles».
-3. `start()` asegura el Service Worker de streaming (`navigator.serviceWorker.ready` en producción; en desarrollo registra `webtorrent-sw.js` por su cuenta), crea el `BrowserServer` de WebTorrent, selecciona solo el archivo elegido (`file.select`, el resto `deselect`), marca críticas las primeras piezas y asigna `video.src = file.streamURL`.
-4. Cada segundo: `computeWindow` traduce la posición del vídeo a piezas (duración real o bitrate asumido), marca críticas las piezas del búfer inicial a partir del playhead, y si el navegador ya tiene más de `aheadSeconds` almacenados, limita la descarga a 64 KB/s (`client.throttleDownload`) hasta que el búfer baje. Un seek fuerza la re-priorización: el navegador cancela la petición de rango anterior y WebTorrent descarta esa selección.
-5. Si `torrent.downloaded` supera el límite de memoria y la opción está activa, la sesión destruye el torrent (liberando todas las piezas) y lo vuelve a añadir desde la posición actual. Es la única forma honesta de liberar memoria: WebTorrent asume que toda pieza verificada sigue disponible, por lo que no se eliminan piezas sueltas por debajo del motor.
-6. `stop()`/`destroy()`: se vacía el `<video>`, se destruye el torrent con su store, se vacía el `EphemeralBufferStore`, se restablece el throttling y se desregistran los listeners. `SessionCleanup` ejecuta lo mismo en `pagehide`, `beforeunload` y `visibilitychange`.
+3. `start()` asegura el Service Worker de streaming (`navigator.serviceWorker.ready` en producción; en desarrollo registra `webtorrent-sw.js` por su cuenta), crea el `BrowserServer` de WebTorrent, **deselecciona todo el torrent** y selecciona solo la ventana del playhead del archivo elegido (`torrent.select(head, keepEnd)`), marca críticas las primeras piezas y asigna `video.src = file.streamURL`.
+4. Cada segundo: `computeWindow` traduce la posición del vídeo a piezas (duración real o bitrate asumido); si el playhead cambió de pieza, se deselecciona la ventana anterior, se selecciona `[head, keepEnd]` y se marcan críticas las piezas del búfer inicial. También calcula `rangeBytes` (ventana futura en bytes, 1–64 MiB en piezas enteras) y lo envía al Service Worker (`ovtorrent-stream-config`), que acota los rangos abiertos del `<video>` a ese tamaño: así las selecciones de stream de WebTorrent nunca cubren el resto del archivo. Un seek re-centra la ventana de inmediato. No se usa `throttleDownload`: no afecta a los web seeds HTTP y no limita qué piezas se piden.
+5. Si los bytes almacenados por esta instancia del torrent superan el límite de memoria y la opción está activa, la sesión **sustituye el torrent en el sitio**: destruye el antiguo (sale del cliente de forma síncrona) y añade otro al instante con el `.torrent` cacheado (`torrent.torrentFile`), por lo que el `BrowserServer` sigue encontrando el infoHash sin volver a negociar metadatos. Cada instancia escribe en su propio espacio del `EphemeralBufferStore` (`clearSession`) para liberar las piezas antiguas sin tocar las nuevas. El `<video>` no se toca —sigue desde su búfer y vuelve a pedir rangos— salvo que ya haya fallado o falle en los 15 s siguientes, en cuyo caso se recarga una vez en la misma posición. Es la única forma honesta de liberar memoria: WebTorrent asume que toda pieza verificada sigue disponible, por lo que no se eliminan piezas sueltas por debajo del motor.
+6. `stop()`/`destroy()`: se vacía el `<video>`, se destruye el torrent con su store, se vacía el `EphemeralBufferStore` y se desregistran los listeners. `SessionCleanup` ejecuta lo mismo en `pagehide`, `beforeunload` y `visibilitychange`.
 
 Métricas: peers (`torrent.numPeers`), velocidad de descarga y subida, disponibilidad (muestreo de hasta 500 piezas del archivo frente a los bitfields de los peers, cacheado 5 s), segundos almacenados por el navegador, bytes en el store, bitrate aproximado (tamaño del archivo / duración), resolución del `<video>`, avisos (sin peers tras el tiempo configurado, errores del protocolo, autoplay bloqueado, reinicios por memoria).
 
@@ -170,7 +170,7 @@ Métricas: peers (`torrent.numPeers`), velocidad de descarga y subida, disponibi
 - **Sin Dexie**: un wrapper de 60 líneas cubre el uso actual y evita una dependencia.
 - **Service Worker único**: las peticiones de una página siempre van al worker que la controla, así que el handler de streaming se importa dentro del worker de Workbox (`importScripts`) en lugar de registrarse en otro scope. Se reimplementa en `public/webtorrent-sw.js` (protocolo idéntico al `sw.min.js` de WebTorrent) para no llamar a `skipWaiting()` y conservar el aviso de actualización.
 - **Nunca OPFS**: el store por defecto de WebTorrent en Chromium es el Origin Private File System (disco). OVtorrent siempre inyecta su propio store efímero (RAM o IndexedDB local) para no escribir vídeos en disco.
-- **Ventana por throttling, no por borrado de piezas**: ver «Sesión WebTorrent paso a paso».
+- **Ventana por selección de piezas y rangos acotados, no por borrado de piezas**: ver «Sesión WebTorrent paso a paso».
 - **HLS nativo primero**: si el `<video>` entiende `.m3u8` (Safari, algunos TV boxes) no se carga hls.js (≈ 190 KB gzip). hls.js se importa bajo demanda solo cuando hace falta MediaSource; la ventana de búfer se traduce a `maxBufferLength`/`backBufferLength`.
 - **Memoria**: las listas largas se virtualizan (`VirtualList`, sin dependencias), el sondeo de métricas se pausa con la pestaña oculta, y en dispositivos con poca RAM se reduce la ventana y el límite automáticamente (opt-out).
 - **Panel TV simplificado**: en modo TV el reproductor muestra solo los controles esenciales y el resto tras «Más»; el foco va al botón de reproducir (configurable).

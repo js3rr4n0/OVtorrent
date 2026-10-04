@@ -42,6 +42,8 @@ export interface WtTorrent {
   destroyed: boolean;
   bitfield?: { get(index: number): boolean; buffer?: Uint8Array } | null;
   announce?: string[];
+  /** Bencoded .torrent once metadata is known; lets the session re-add the torrent instantly. */
+  torrentFile?: Uint8Array;
   /** torrent-discovery instance; `tracker.update()` re-announces with fresh WebRTC offers. */
   discovery?: { tracker?: { update?: () => void } | null } | null;
   select(start: number, end: number, priority?: number, notify?: () => void): void;

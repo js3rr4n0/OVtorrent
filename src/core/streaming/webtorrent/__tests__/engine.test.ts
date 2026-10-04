@@ -7,10 +7,10 @@ import {
   countTrackers,
   NO_PEERS_GUIDANCE,
   NO_PEERS_MESSAGE,
+  STREAM_CONFIG_MESSAGE,
   trackersFor,
   WebTorrentStreamingEngine,
 } from '../WebTorrentStreamingEngine';
-import { THROTTLED_RATE_BPS } from '../windowPolicy';
 import { computeAvailability } from '@/workers/protocol';
 import { FakeWebTorrentClient, type FakeTorrent } from '@/test/fakes';
 
@@ -43,16 +43,24 @@ function makeClient(
   });
 }
 
+/** Messages the engine posted to the (fake) streaming Service Worker. */
+const swMessages: unknown[] = [];
+const fakeRegistration = {
+  scope: 'http://localhost/',
+  active: { postMessage: (m: unknown) => swMessages.push(m) },
+} as unknown as ServiceWorkerRegistration;
+
 function makeEngine(
   client: FakeWebTorrentClient,
   settings: Settings = DEFAULT_SETTINGS,
   now = () => Date.now(),
+  store: MemoryBufferStore = new MemoryBufferStore(Number.POSITIVE_INFINITY),
 ) {
   return new WebTorrentStreamingEngine({
     getSettings: () => settings,
     getClient: async () => client,
-    getRegistration: async () => ({ scope: 'http://localhost/' }) as ServiceWorkerRegistration,
-    createBufferStore: () => new MemoryBufferStore(Number.POSITIVE_INFINITY),
+    getRegistration: async () => fakeRegistration,
+    createBufferStore: () => store,
     now,
     runAvailability: async (job) => computeAvailability(job),
   });
@@ -123,9 +131,13 @@ describe('WebTorrentStreamingEngine', () => {
     const t = client.torrents[0] as FakeTorrent;
     expect(client.servers).toBe(1);
     expect(v.getAttribute('src')).toContain(`/webtorrent/${HASH}/video.mp4`);
-    expect(t.calls).toContain('deselect:readme.txt');
-    expect(t.calls).toContain('select:video.mp4');
+    // Nothing but the playhead window is requested: 51 pieces deselected, then
+    // [0, keepEnd] selected (90 s × 625 000 B/s fallback ≈ 54 pieces → capped at 50).
+    expect(t.calls[0]).toBe('deselectRange:0-50');
+    expect(t.calls).toContain('selectRange:0-50');
     expect(t.calls.some((c) => c.startsWith('critical:0-'))).toBe(true);
+    expect(t.calls.some((c) => c.startsWith('select:'))).toBe(false);
+    expect(swMessages.at(-1)).toEqual({ type: STREAM_CONFIG_MESSAGE, rangeBytes: 54 * MB });
     expect(client.uploadRate).toBe(-1);
     await session.destroy();
     expect(t.destroyed).toBe(true);
@@ -144,7 +156,7 @@ describe('WebTorrentStreamingEngine', () => {
       fileIndex: 0,
       bufferWindow: { initialSeconds: 1, aheadSeconds: 1, behindSeconds: 1 },
     });
-    expect(client.torrents[0]?.calls).toContain('select:readme.txt');
+    expect(client.torrents[0]?.calls).toContain('selectRange:0-0');
     expect(client.uploadRate).toBe(0);
     await session.destroy();
   });
@@ -173,46 +185,71 @@ describe('WebTorrentStreamingEngine', () => {
     vi.useRealTimers();
   });
 
-  it('throttles downloads once the future window is buffered and releases the throttle after a seek', async () => {
+  it('moves the download window with the playhead and tells the worker the range size', async () => {
     vi.useFakeTimers();
     const client = makeClient();
     const session = await makeEngine(client).createSession({ item });
-    let ahead = 200;
-    const v = video(() => ahead);
-    Object.defineProperty(v, 'duration', { value: 500 });
+    const v = video();
+    Object.defineProperty(v, 'duration', { value: 500 }); // 50 MB / 500 s → 1 piece ≈ 10 s
     await session.start({
       videoElement: v,
       bufferWindow: { initialSeconds: 30, aheadSeconds: 90, behindSeconds: 15 },
     });
+    const t = client.torrents[0] as FakeTorrent;
+    expect(t.calls).toContain('selectRange:0-9');
+    expect(swMessages.at(-1)).toEqual({ type: STREAM_CONFIG_MESSAGE, rangeBytes: 9 * MB });
+    v.currentTime = 300;
     await vi.advanceTimersByTimeAsync(1000);
-    expect(client.downloadRate).toBe(THROTTLED_RATE_BPS);
-    ahead = 5;
-    await session.seek(300);
-    expect(client.downloadRate).toBe(-1);
+    expect(t.calls).toContain('deselectRange:0-9');
+    expect(t.calls).toContain('selectRange:30-39');
+    expect(t.calls).toContain('critical:30-33');
+    // A seek re-centres the window immediately, before the element reports the new position.
+    await session.seek(100);
+    expect(t.calls.at(-2)).toBe('selectRange:10-19');
+    expect(t.calls.at(-1)).toBe('critical:10-13');
     await session.destroy();
     vi.useRealTimers();
   });
 
-  it('restarts the torrent from the current position when the memory limit is exceeded', async () => {
+  it('restarts the torrent in place when the memory limit is exceeded, keeping the element and freeing the old pieces', async () => {
     vi.useFakeTimers();
     const client = makeClient();
+    const store = new MemoryBufferStore(Number.POSITIVE_INFINITY);
     const settings: Settings = {
       ...DEFAULT_SETTINGS,
-      buffer: { ...DEFAULT_SETTINGS.buffer, memoryLimitBytes: 16 * MB },
+      buffer: { ...DEFAULT_SETTINGS.buffer, storeKind: 'memory', memoryLimitBytes: 16 * MB },
     };
-    const session = await makeEngine(client, settings).createSession({ item });
+    const session = await makeEngine(client, settings, () => Date.now(), store).createSession({
+      item,
+    });
     const v = video();
     await session.start({
       videoElement: v,
       bufferWindow: { initialSeconds: 1, aheadSeconds: 1, behindSeconds: 1 },
     });
     const first = client.torrents[0] as FakeTorrent;
-    first.downloaded = 20 * MB;
+    for (let i = 0; i < 20; i++) await first.receivePiece(i);
+    expect(session.metrics().bufferedBytes).toBe(20 * MB);
+    expect((await store.getUsage()).bytes).toBe(20 * MB);
+    const src = v.getAttribute('src');
     v.currentTime = 42;
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(client.added).toHaveLength(2));
     expect(first.destroyed).toBe(true);
-    expect(session.metrics().warnings.join(' ')).toMatch(/Reinicios por memoria/);
+    // Re-added from the cached metadata (no new metadata exchange), same stream URL.
+    expect(client.addCalls).toEqual(['magnet', 'torrentFile']);
+    expect(v.getAttribute('src')).toBe(src);
+    const second = client.torrents[0] as FakeTorrent;
+    expect(second).not.toBe(first);
+    // 42 s × 625 000 B/s (fallback) ≈ piece 25: the window resumes at the playhead.
+    expect(second.calls).toContain('selectRange:25-50');
+    await vi.waitFor(async () => expect((await store.getUsage()).bytes).toBe(0));
+    expect(session.metrics().bufferedBytes).toBe(0);
+    expect(session.metrics().warnings.join(' ')).toMatch(/Reinicios por memoria en esta sesión: 1/);
+    expect(session.metrics().warnings.join(' ')).not.toMatch(/reproducción automáticamente/);
+    // Pieces of the new incarnation count again from zero.
+    await second.receivePiece(25);
+    expect(session.metrics().bufferedBytes).toBe(MB);
     await session.destroy();
     vi.useRealTimers();
   });

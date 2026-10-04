@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeWindow,
+  MAX_STREAM_RANGE_BYTES,
+  MIN_STREAM_RANGE_BYTES,
   pickDefaultFileIndex,
   pieceRangeOf,
   secondsToPieces,
+  streamRangeBytes,
 } from '../windowPolicy';
 import { DEFAULT_WEBSOCKET_TRACKERS, isWebSocketTracker, normalizeTrackerList } from '../trackers';
 
@@ -28,14 +31,13 @@ describe('windowPolicy', () => {
     expect(secondsToPieces(30, 500_000, MB)).toBe(15);
   });
 
-  it('computes head, keep window, critical pieces, throttle and expired pieces', () => {
+  it('computes head, keep window, critical pieces, range size and expired pieces', () => {
     const file = { name: 'v.mp4', length: 100 * MB, offset: 0 };
     const have = new Set([0, 1, 2, 3, 40, 41, 90]);
     const w = computeWindow({
       file,
       pieceLength: MB,
       positionSeconds: 400, // 40 % of 1000 s → piece 40
-      bufferedAheadSeconds: 10,
       durationSeconds: 1000,
       fallbackKbps: 5000,
       window: { initialSeconds: 30, aheadSeconds: 90, behindSeconds: 15 },
@@ -46,23 +48,30 @@ describe('windowPolicy', () => {
     expect(w.keepEnd).toBe(49); // 90 s ahead = 9 pieces
     expect(w.criticalStart).toBe(40);
     expect(w.criticalEnd).toBe(43);
-    expect(w.throttle).toBe(false);
+    // 90 s × 104 857.6 B/s = 9 MiB exactly (whole pieces)
+    expect(w.rangeBytes).toBe(9 * MB);
     expect(w.expiredPieces).toEqual([0, 1, 2, 3, 90]);
   });
 
-  it('throttles when the future window is already buffered and uses the fallback bitrate without duration', () => {
+  it('uses the fallback bitrate while the duration is unknown', () => {
     const file = { name: 'v.mp4', length: 100 * MB, offset: 0 };
     const w = computeWindow({
       file,
       pieceLength: MB,
       positionSeconds: 0,
-      bufferedAheadSeconds: 120,
       fallbackKbps: 8000, // 1 000 000 B/s → 90 s ≈ 85.8 MiB pieces → 86
       window: { initialSeconds: 30, aheadSeconds: 90, behindSeconds: 15 },
       havePiece: () => false,
     });
-    expect(w.throttle).toBe(true);
     expect(w.keepEnd).toBe(86);
+    expect(w.rangeBytes).toBe(MAX_STREAM_RANGE_BYTES); // 86 MiB wanted, capped at 64 MiB
+  });
+
+  it('bounds the streamed range between 1 MiB and 64 MiB in whole pieces', () => {
+    expect(streamRangeBytes(1000, 10, 16 * 1024)).toBe(MIN_STREAM_RANGE_BYTES);
+    expect(streamRangeBytes(10_000_000, 600, MB)).toBe(MAX_STREAM_RANGE_BYTES);
+    expect(streamRangeBytes(500_000, 30, MB)).toBe(15 * MB); // 15 000 000 B → 15 MiB
+    expect(streamRangeBytes(500_000, 30, 0)).toBe(15_000_000);
   });
 });
 

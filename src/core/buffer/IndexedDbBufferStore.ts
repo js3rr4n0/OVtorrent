@@ -130,6 +130,12 @@ export class IndexedDbBufferStore implements EphemeralBufferStore {
     );
   }
 
+  async clearSession(sessionId: string): Promise<void> {
+    await this.deleteKeys(
+      [...this.meta.entries()].filter(([, m]) => m.sessionId === sessionId).map(([k]) => k),
+    );
+  }
+
   async clear(): Promise<void> {
     this.meta.clear();
     this.bytes = 0;

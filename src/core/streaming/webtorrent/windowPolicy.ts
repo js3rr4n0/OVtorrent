@@ -81,8 +81,8 @@ export interface WindowState {
   /** Pieces requested with high priority right now. */
   criticalStart: number;
   criticalEnd: number;
-  /** True when enough future data is buffered and downloads should be throttled. */
-  throttle: boolean;
+  /** Size of the byte ranges the Service Worker hands to the <video> element. */
+  rangeBytes: number;
   /** Bytes held by pieces of this file outside the keep window (candidates for cleanup). */
   expiredPieces: number[];
 }
@@ -91,7 +91,6 @@ export interface WindowInput {
   file: FileLike;
   pieceLength: number;
   positionSeconds: number;
-  bufferedAheadSeconds: number;
   durationSeconds?: number;
   fallbackKbps: number;
   window: BufferWindowConfig;
@@ -102,10 +101,12 @@ export interface WindowInput {
 /**
  * Pure window computation used every tick by the WebTorrent session.
  *
- * - The sequential strategy of WebTorrent plus `critical()` keeps pieces near
- *   the playhead first.
- * - When the browser already has more than `aheadSeconds` buffered we throttle
- *   downloads so the swarm is not asked for data far beyond the window.
+ * - Only [headPiece, keepEnd] is selected for download: the sequential
+ *   strategy plus `critical()` keeps pieces near the playhead first and nothing
+ *   beyond the future window is requested from peers or web seeds.
+ * - The <video> element asks for open-ended byte ranges; the Service Worker
+ *   bounds them to `rangeBytes` (about the future window) so WebTorrent's own
+ *   stream selections never cover the rest of the file.
  * - Pieces outside [keepStart, keepEnd] are reported as expired so the session
  *   can account for them and restart the torrent when the memory limit is hit.
  */
@@ -131,11 +132,24 @@ export function computeWindow(input: WindowInput): WindowState {
     keepEnd,
     criticalStart: headPiece,
     criticalEnd,
-    throttle: input.bufferedAheadSeconds >= window.aheadSeconds,
+    rangeBytes: streamRangeBytes(bps, window.aheadSeconds, pieceLength),
     expiredPieces,
   };
 }
 
-/** Download rate applied while throttled (bytes/s): enough to keep wires alive, far below video bitrate. */
-export const THROTTLED_RATE_BPS = 64 * 1024;
+export const MIN_STREAM_RANGE_BYTES = 1024 * 1024;
+export const MAX_STREAM_RANGE_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Bytes per range request served to the <video> element: roughly the future
+ * window, never below 1 MiB nor above 64 MiB, rounded up to whole pieces so a
+ * range never ends inside a piece that has to be fetched anyway.
+ */
+export function streamRangeBytes(bps: number, aheadSeconds: number, pieceLength: number): number {
+  const wanted = Math.ceil(Math.max(0, bps) * Math.max(0, aheadSeconds));
+  const bounded = Math.min(MAX_STREAM_RANGE_BYTES, Math.max(MIN_STREAM_RANGE_BYTES, wanted));
+  if (!Number.isFinite(pieceLength) || pieceLength <= 0) return bounded;
+  return Math.ceil(bounded / pieceLength) * pieceLength;
+}
+
 export const UNLIMITED_RATE = -1;

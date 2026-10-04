@@ -1,6 +1,6 @@
 import { createBufferStore, MemoryBufferStore, type EphemeralBufferStore } from '../../buffer';
 import type { MediaItem } from '../../schemas/media';
-import { resolveBufferWindow, type Settings } from '../../schemas/settings';
+import type { Settings } from '../../schemas/settings';
 import { hasRTCDataChannel, hasServiceWorker, hasWebRTC } from '../capabilities';
 import { describeMediaError } from '../HtmlMediaEngine';
 import { createSessionId } from '../sessionId';
@@ -32,7 +32,6 @@ import {
   isPlayableName,
   pickDefaultFileIndex,
   pieceRangeOf,
-  THROTTLED_RATE_BPS,
   UNLIMITED_RATE,
 } from './windowPolicy';
 import { MAX_SUBTITLE_BYTES, toWebVtt, vttObjectUrl } from '../../subtitles/srtToVtt';
@@ -93,6 +92,22 @@ export function bitfieldBytes(
 
 const SUPPORTED: MediaItem['sourceType'][] = ['magnet', 'torrent'];
 const METADATA_TIMEOUT_MS = 90_000;
+/** Message type understood by public/webtorrent-sw.js. */
+export const STREAM_CONFIG_MESSAGE = 'ovtorrent-stream-config';
+/** Media errors this soon after a memory restart are retried once by reloading the stream. */
+const RESTART_RECOVERY_MS = 15_000;
+
+/**
+ * `null` when no warning is due: an AbortError only means the attempt was
+ * superseded (the user paused or the stream was reloaded after a restart).
+ */
+function describeAutoplayError(err: unknown): string | null {
+  if (err instanceof Error && err.name === 'AbortError') return null;
+  if (err instanceof Error && err.name === 'NotAllowedError')
+    return 'El navegador bloqueó la reproducción automática. Pulsa reproducir.';
+  const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
+  return `No se pudo iniciar la reproducción automáticamente${detail}. Pulsa reproducir.`;
+}
 
 /** Counts WebSocket trackers in use and non-browser trackers present in the magnet. */
 export function countTrackers(magnet: string, configured: string[]): TrackerStatus {
@@ -118,10 +133,11 @@ export function trackersFor(settings: Settings): string[] {
 /**
  * Browser-only P2P engine built on WebTorrent (WebRTC DataChannels + WebSocket
  * trackers). It streams the selected file to the <video> element through the
- * Service Worker handler, keeps requests near the playhead (sequential
- * strategy + critical pieces), throttles downloads once the future window is
- * full and restarts the torrent to free memory when the configured limit is
- * exceeded. Nothing is written to disk and everything is dropped on stop.
+ * Service Worker handler, selects only the pieces of the current window
+ * (sequential strategy + critical pieces, bounded byte ranges for the
+ * <video> element) and restarts the torrent in place to free memory when the
+ * configured limit is exceeded. Nothing is written to disk and everything is
+ * dropped on stop.
  */
 export class WebTorrentStreamingEngine implements StreamingEngine {
   readonly name = 'webtorrent';
@@ -184,7 +200,17 @@ class WebTorrentSession implements StreamingSession {
   private bufferStore: EphemeralBufferStore;
   private fileIndex = -1;
   private tick: ReturnType<typeof setInterval> | null = null;
-  private throttled = false;
+  private registration: ServiceWorkerRegistration | null = null;
+  /** Bencoded metadata kept so a memory restart re-adds the torrent instantly. */
+  private torrentFile: Uint8Array | null = null;
+  /** Store namespace of the current torrent incarnation (changes on every memory restart). */
+  private storeSessionId: string;
+  private generation = 0;
+  private restartedAt = 0;
+  private recoveredAfterRestart = false;
+  private rangeBytesSent = 0;
+  /** Piece range currently selected for download (the playhead window). */
+  private selection: { start: number; end: number } | null = null;
   private warnings = new Map<string, string>();
   private startedAt = 0;
   private restarts = 0;
@@ -208,6 +234,7 @@ class WebTorrentSession implements StreamingSession {
     private readonly deps: WebTorrentEngineDeps,
   ) {
     this.settings = deps.getSettings();
+    this.storeSessionId = this.id;
     this.plan = deps.planBuffer ? deps.planBuffer(this.settings) : planBuffer(this.settings);
     this.now = deps.now ?? (() => Date.now());
     // WebTorrent must hold pieces somewhere to play them. Its browser default
@@ -338,9 +365,14 @@ class WebTorrentSession implements StreamingSession {
       maxWebConns: this.settings.buffer.maxConcurrentRequests,
       destroyStoreOnDestroy: true,
     };
-    opts.store = createEphemeralChunkStoreClass(this.bufferStore, this.id, (_i, bytes) => {
-      this.bytesInStore += bytes;
-    });
+    const generation = this.generation;
+    opts.store = createEphemeralChunkStoreClass(
+      this.bufferStore,
+      this.storeSessionId,
+      (_i, bytes) => {
+        if (generation === this.generation) this.bytesInStore += bytes;
+      },
+    );
     // IndexedDB benefits from WebTorrent's small LRU in front of it; RAM does not.
     opts.storeCacheSlots = this.bufferStore.kind === 'indexeddb' ? 20 : 0;
     return opts;
@@ -375,7 +407,8 @@ class WebTorrentSession implements StreamingSession {
       const existing = client.torrents.find(
         (t) => !t.destroyed && this.source.item.source.toLowerCase().includes(t.infoHash),
       );
-      const t = existing ?? client.add(this.source.item.source, this.addOptions());
+      const t =
+        existing ?? client.add(this.torrentFile ?? this.source.item.source, this.addOptions());
       const onError = (err: Error) => {
         if (settled) return;
         settled = true;
@@ -406,6 +439,7 @@ class WebTorrentSession implements StreamingSession {
       else t.once('ready', onReady);
     });
     this.torrent = torrent;
+    this.torrentFile = torrent.torrentFile ?? this.torrentFile;
     if (this.state === 'loading') {
       this.state = 'ready';
       this.emit();
@@ -434,6 +468,7 @@ class WebTorrentSession implements StreamingSession {
     if (this.server) return this.server;
     const getRegistration = this.deps.getRegistration ?? getStreamingRegistration;
     const registration = await getRegistration();
+    this.registration = registration;
     // The client keeps one server; reuse it across sessions.
     const existing = (client as unknown as { _server?: WtBrowserServer })._server;
     this.server = existing ?? client.createServer({ controller: registration }, 'browser');
@@ -456,10 +491,13 @@ class WebTorrentSession implements StreamingSession {
     this.warnings.clear();
     if (this.plan.adjustedReason) this.warnings.set('memory-plan', this.plan.adjustedReason);
 
-    // Only the chosen file is downloaded; the playhead region is critical.
-    torrent.files.forEach((f, i) => (i === index ? f.select(1) : f.deselect()));
-    const range = pieceRangeOf(file, torrent.pieceLength);
-    torrent.critical(range.start, Math.min(range.end, range.start + 2));
+    // Nothing is selected by default (WebTorrent would otherwise fetch the
+    // whole torrent sequentially, web seeds included); only the playhead
+    // window of the chosen file is requested, and it moves with playback.
+    torrent.deselect(0, Math.max(0, torrent.pieces.length - 1));
+    this.selection = null;
+    this.lastCriticalHead = -1;
+    this.applyWindow(true, options.startAtSeconds);
 
     const video = this.video;
     this.detachVideo();
@@ -473,10 +511,17 @@ class WebTorrentSession implements StreamingSession {
       this.emit();
     };
     const onError = () => {
+      // A restart interrupts the stream the element was reading; browsers
+      // usually re-request the range on their own, otherwise reload once.
+      if (this.now() - this.restartedAt < RESTART_RECOVERY_MS && !this.recoveredAfterRestart) {
+        this.recoveredAfterRestart = true;
+        void this.reloadVideo(video.currentTime, !video.paused);
+        return;
+      }
       this.state = 'error';
       this.warn('media', describeMediaError(video.error));
     };
-    const onSeeking = () => this.scheduleCritical(true);
+    const onSeeking = () => this.applyWindow(true);
     video.addEventListener('waiting', onWaiting);
     video.addEventListener('playing', onPlaying);
     video.addEventListener('pause', onPause);
@@ -500,15 +545,16 @@ class WebTorrentSession implements StreamingSession {
     this.state = 'ready';
     this.emit();
     this.startTick();
+    await this.playOrWarn(video);
+  }
+
+  private async playOrWarn(video: HTMLVideoElement) {
     try {
       await video.play();
+      this.clearWarning('autoplay');
     } catch (err) {
-      this.warn(
-        'autoplay',
-        err instanceof Error && err.name === 'NotAllowedError'
-          ? 'El navegador bloqueó la reproducción automática. Pulsa reproducir.'
-          : 'No se pudo iniciar la reproducción automáticamente.',
-      );
+      const message = describeAutoplayError(err);
+      if (message) this.warn('autoplay', message);
     }
   }
 
@@ -529,7 +575,7 @@ class WebTorrentSession implements StreamingSession {
     // UI-oriented work (metrics emission) to save CPU on TV boxes.
     const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
     if (hidden) {
-      this.scheduleCritical(false);
+      this.applyWindow(false);
       this.checkMemoryLimit();
       return;
     }
@@ -543,7 +589,7 @@ class WebTorrentSession implements StreamingSession {
     ) {
       this.warn('no-peers', `${NO_PEERS_MESSAGE} ${NO_PEERS_GUIDANCE}`);
     }
-    this.scheduleCritical(false);
+    this.applyWindow(false);
     this.checkMemoryLimit();
     this.reofferToBridge(false);
     this.emit();
@@ -554,7 +600,7 @@ class WebTorrentSession implements StreamingSession {
     return Boolean(file && file.progress >= 0.999);
   }
 
-  private windowState() {
+  private windowState(positionOverride?: number) {
     const torrent = this.torrent;
     const video = this.video;
     const file = torrent?.files[this.fileIndex];
@@ -562,8 +608,7 @@ class WebTorrentSession implements StreamingSession {
     return computeWindow({
       file,
       pieceLength: torrent.pieceLength,
-      positionSeconds: video.currentTime || 0,
-      bufferedAheadSeconds: bufferedAhead(video),
+      positionSeconds: positionOverride ?? video.currentTime ?? 0,
       durationSeconds:
         Number.isFinite(video.duration) && video.duration > 0 ? video.duration : undefined,
       fallbackKbps: this.settings.buffer.estimateBitrateKbps,
@@ -572,53 +617,109 @@ class WebTorrentSession implements StreamingSession {
     });
   }
 
-  /** Marks pieces near the playhead as critical and applies window throttling. */
-  private scheduleCritical(force: boolean) {
+  /**
+   * Selects the playhead window [head, keepEnd] (deselecting the previous
+   * one), marks the first seconds critical and tells the Service Worker how
+   * large the byte ranges served to the <video> element may be.
+   */
+  private applyWindow(force: boolean, positionOverride?: number) {
     const torrent = this.torrent;
-    const client = this.client;
-    const w = this.windowState();
-    if (!torrent || torrent.destroyed || !client || !w) return;
+    const w = this.windowState(positionOverride);
+    if (!torrent || torrent.destroyed || !w) return;
     if (force || w.headPiece !== this.lastCriticalHead) {
       this.lastCriticalHead = w.headPiece;
+      const next = { start: w.headPiece, end: Math.max(w.headPiece, w.keepEnd) };
+      const prev = this.selection;
+      if (prev && (prev.start !== next.start || prev.end !== next.end))
+        torrent.deselect(prev.start, prev.end);
+      if (!prev || prev.start !== next.start || prev.end !== next.end)
+        torrent.select(next.start, next.end, 1);
+      this.selection = next;
       torrent.critical(w.criticalStart, w.criticalEnd);
     }
-    if (w.throttle !== this.throttled) {
-      this.throttled = w.throttle;
-      client.throttleDownload(w.throttle ? THROTTLED_RATE_BPS : UNLIMITED_RATE);
-    }
+    this.sendRangeConfig(w.rangeBytes);
+  }
+
+  /** The streaming handler bounds open-ended range requests to this many bytes. */
+  private sendRangeConfig(rangeBytes: number) {
+    if (rangeBytes === this.rangeBytesSent) return;
+    const worker = this.registration?.active;
+    if (!worker || typeof worker.postMessage !== 'function') return;
+    worker.postMessage({ type: STREAM_CONFIG_MESSAGE, rangeBytes });
+    this.rangeBytesSent = rangeBytes;
   }
 
   private checkMemoryLimit() {
     const torrent = this.torrent;
     if (!torrent || !this.settings.p2p.restartOnMemoryLimit) return;
-    if (torrent.downloaded <= this.plan.memoryLimitBytes) return;
+    if (this.bytesInStore <= this.plan.memoryLimitBytes) return;
     void this.restartForMemory();
   }
 
   private restarting = false;
-  /** Frees every downloaded piece by recreating the torrent and resuming at the current position. */
+  /**
+   * Frees every downloaded piece by replacing the torrent in place: the old
+   * one is destroyed (removed from the client synchronously) and the new one
+   * is added from the cached metadata right away, so the Service Worker keeps
+   * finding the torrent. The <video> element is left alone — it keeps playing
+   * from its own buffer and re-requests ranges as needed — unless it already
+   * failed, in which case it is reloaded at the same position.
+   */
   private async restartForMemory() {
-    if (this.restarting || !this.video || !this.torrent) return;
-    this.restarting = true;
-    const position = this.video.currentTime;
-    const fileIndex = this.fileIndex;
     const video = this.video;
+    const old = this.torrent;
+    if (this.restarting || !video || !old) return;
+    this.restarting = true;
+    const position = video.currentTime;
+    const wasPlaying = !video.paused && !video.ended;
     this.warn(
       'memory',
       'Límite de memoria alcanzado: se reinicia la sesión P2P desde la posición actual para liberar piezas.',
     );
     try {
-      await this.dropTorrent();
-      this.restarts++;
-      await this.start({
-        videoElement: video,
-        startAtSeconds: position,
-        fileIndex,
-        bufferWindow: resolveBufferWindow(this.settings),
-      });
+      const oldStore = this.bufferStore;
+      const oldSession = this.storeSessionId;
+      this.generation += 1;
+      this.storeSessionId = `${this.id}#${this.generation}`;
+      this.bytesInStore = 0;
+      this.restarts += 1;
+      this.restartedAt = this.now();
+      this.recoveredAfterRestart = false;
+      this.selection = null;
+      this.lastCriticalHead = -1;
+      this.torrent = null;
+      for (const fn of this.torrentCleanupFns.splice(0)) fn();
+      this.unsubscribeBridge?.();
+      this.unsubscribeBridge = null;
+      this.announcedOnce = false;
+      // The old pieces live in their own store namespace: they are released
+      // once the torrent is gone without touching what the new one writes.
+      const released = new Promise<void>((resolve) =>
+        old.destroy({ destroyStore: false }, () => resolve()),
+      );
+      void released.then(() => oldStore.clearSession(oldSession));
+      await this.ensureTorrent();
+      this.applyWindow(true, position);
+      this.emit();
+      if (video.error || video.readyState === 0) await this.reloadVideo(position, wasPlaying);
     } finally {
       this.restarting = false;
     }
+  }
+
+  /** Points the element at the stream again and resumes at `position`. */
+  private async reloadVideo(position: number, play: boolean) {
+    const video = this.video;
+    const file = this.torrent?.files[this.fileIndex];
+    if (!video || !file) return;
+    const onMeta = () => {
+      video.currentTime = position;
+    };
+    video.addEventListener('loadedmetadata', onMeta, { once: true });
+    this.cleanupFns.push(() => video.removeEventListener('loadedmetadata', onMeta));
+    video.src = file.streamURL;
+    this.emit();
+    if (play) await this.playOrWarn(video);
   }
 
   private dropTorrent(): Promise<void> {
@@ -629,10 +730,7 @@ class WebTorrentSession implements StreamingSession {
     this.unsubscribeBridge = null;
     this.announcedOnce = false;
     this.lastCriticalHead = -1;
-    if (this.client && this.throttled) {
-      this.client.throttleDownload(UNLIMITED_RATE);
-      this.throttled = false;
-    }
+    this.selection = null;
     return new Promise((resolve) => {
       if (!torrent || torrent.destroyed) return resolve();
       torrent.destroy({ destroyStore: true }, () => resolve());
@@ -645,7 +743,7 @@ class WebTorrentSession implements StreamingSession {
 
   async seek(positionSeconds: number): Promise<void> {
     if (this.video) this.video.currentTime = Math.max(0, positionSeconds);
-    this.scheduleCritical(true);
+    this.applyWindow(true, Math.max(0, positionSeconds));
   }
 
   async stop(): Promise<void> {

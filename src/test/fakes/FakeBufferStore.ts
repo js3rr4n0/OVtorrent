@@ -36,6 +36,10 @@ export class FakeBufferStore implements EphemeralBufferStore {
         c.timestamp >= w.position - w.behindSeconds && c.timestamp <= w.position + w.aheadSeconds,
     );
   }
+  async clearSession(sessionId: string) {
+    this.calls.push('clearSession');
+    this.chunks = this.chunks.filter((c) => c.sessionId !== sessionId);
+  }
   async clear() {
     this.calls.push('clear');
     this.chunks = [];

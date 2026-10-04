@@ -46,6 +46,8 @@ export interface EphemeralBufferStore {
   read(range: MediaRange): Promise<BufferChunk | null>;
   removeBefore(timestamp: number): Promise<void>;
   removeOutsideWindow(window: BufferWindow): Promise<void>;
+  /** Drops every chunk written under one session id (other sessions are untouched). */
+  clearSession(sessionId: string): Promise<void>;
   clear(): Promise<void>;
   getUsage(): Promise<StorageUsage>;
 }

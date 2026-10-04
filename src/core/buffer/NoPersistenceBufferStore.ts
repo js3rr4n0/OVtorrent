@@ -21,6 +21,7 @@ export class NoPersistenceBufferStore implements EphemeralBufferStore {
   }
   async removeBefore(_timestamp: number): Promise<void> {}
   async removeOutsideWindow(_window: BufferWindow): Promise<void> {}
+  async clearSession(_sessionId: string): Promise<void> {}
   async clear(): Promise<void> {}
   async getUsage(): Promise<StorageUsage> {
     return { bytes: 0, chunks: 0, limitBytes: 0, kind: 'none' };

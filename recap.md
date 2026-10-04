@@ -358,3 +358,38 @@ El usuario pidió que baste con pegar cualquier magnet y reproducir. Un navegado
 - El puente no transcodifica: AV1/HEVC/Atmos/MKV que el navegador no decodifique seguirán sin reproducirse.
 - Requiere Node.js ≥ 20 en una máquina del usuario y, entre redes distintas, conectividad WebRTC (STUN).
 - Instalación del puente: `cd bridge && npm install` (en este entorno, `--legacy-peer-deps` no fue necesario).
+
+---
+
+## 2026-10-04 — Ventana real de descarga y reinicio por memoria sin cortar la reproducción
+
+### Síntoma
+
+Con el magnet de Big Buck Bunny (276 MB, web seed HTTPS de webtorrent.io) el reproductor mostraba «No se pudo iniciar la reproducción automáticamente» y «Reinicios por memoria en esta sesión: 1» sin llegar a reproducir.
+
+### Causas
+
+1. `start()` seleccionaba el archivo completo (`file.select`) y confiaba en `client.throttleDownload` para frenar la descarga cuando el búfer futuro estaba lleno. Ese límite solo se aplica a las conexiones de peers (tuberías de `Peer.setThrottlePipes`); los **web seeds HTTP no pasan por él**, así que el archivo entero se descargaba a toda velocidad, superaba el límite de memoria (256 MB) y forzaba el reinicio.
+2. Aunque no hubiera selección explícita, el `<video>` pide rangos abiertos (`bytes=N-`) y el `BrowserServer` crea una selección de stream hasta el final del archivo: WebTorrent habría descargado igualmente todo.
+3. El reinicio destruía el torrent, esperaba a vaciar el store y volvía a ejecutar `start()` (nueva negociación de metadatos, `video.src` reasignado y `play()` sin gesto reciente): el `play()` original quedaba abortado y el nuevo fallaba → aviso de autoplay y vídeo parado.
+
+### Cambios
+
+- `windowPolicy.ts`: desaparece el throttling (`THROTTLED_RATE_BPS`, `throttle`, `bufferedAheadSeconds`); `computeWindow` devuelve `rangeBytes` (`streamRangeBytes`: ventana futura en bytes, 1–64 MiB, en piezas enteras).
+- `WebTorrentStreamingEngine.ts`: al empezar se deselecciona todo el torrent y se selecciona solo `[head, keepEnd]` del archivo elegido; la selección se desplaza en cada tick y en cada seek (`applyWindow`). El tamaño de rango se envía al Service Worker (`ovtorrent-stream-config`). El límite de memoria se mide con los bytes almacenados por la instancia actual. El reinicio sustituye el torrent en el sitio: destruye el antiguo (sale del cliente de forma síncrona), añade el nuevo con el `.torrent` cacheado (`torrent.torrentFile`), re-centra la ventana en la posición actual y deja el `<video>` intacto; solo lo recarga si ya había fallado o falla en los 15 s siguientes. Los `AbortError` de `play()` (intento superado por una recarga o una pausa) ya no generan aviso.
+- `public/webtorrent-sw.js`: acota los rangos abiertos u oversized a `maxRangeBytes` (16 MiB por defecto, configurable por mensaje) antes de pedirlos a la página; la respuesta `206` conserva el tamaño total.
+- `EphemeralBufferStore`: nuevo `clearSession(sessionId)` (memoria, IndexedDB, sin persistencia, fake) para liberar las piezas de la instancia anterior sin tocar las nuevas.
+- `types.ts`: `torrentFile?`. Fake de WebTorrent: `torrentFile`, `add()` con buffer, `addCalls`.
+- Tests: `windowPolicy.test.ts` (rangos), `engine.test.ts` (ventana móvil y mensaje al SW; reinicio en el sitio con store liberado, misma URL y sin aviso de autoplay), `e2e/p2p.spec.ts` (acotado de rangos + reproducción con rangos de 64 KiB; reinicio por memoria real con clip de >18 MB y límite de 16 MB).
+- Documentación: `STREAMING-LIMITATIONS.md`, `ARCHITECTURE.md`, `TESTING.md`.
+
+### Pruebas ejecutadas
+
+- `npm run lint`, `npx prettier --check .`, `npm run typecheck`: limpios.
+- `npm run test`: 132 tests.
+- `npm run test:e2e`: 25 escenarios, incluidos los dos de `p2p.spec.ts` (el reinicio por memoria ocurre durante la reproducción y el vídeo sigue avanzando sin `video.error`).
+
+### Limitaciones que siguen
+
+- El selector «Calidad» del reproductor solo lista variantes HLS declaradas o ítems de la misma playlist con calidad distinta: un torrent tiene un único archivo de vídeo, así que no hay nada que elegir.
+- Las piezas detrás del playhead siguen en memoria hasta el siguiente reinicio (WebTorrent no admite borrado pieza a pieza).

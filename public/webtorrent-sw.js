@@ -11,16 +11,45 @@
  * This worker asks the window client (where the WebTorrent client lives) for
  * the response over a MessageChannel and streams the chunks it receives.
  * Nothing here touches the network and nothing is cached.
+ *
+ * Media elements ask for open-ended ranges ("bytes=N-"), which would make
+ * WebTorrent select every piece up to the end of the file. The worker bounds
+ * each range to `maxRangeBytes` (about the future buffer window; the page
+ * updates it with an `ovtorrent-stream-config` message) and answers with a
+ * 206 whose Content-Range still carries the full size, so the element simply
+ * asks for the next range when it needs more.
  */
 (() => {
   'use strict';
   let cancelSupported = false;
   const STREAM_PULL_TIMEOUT_MS = 5000;
+  const DEFAULT_RANGE_BYTES = 16 * 1024 * 1024;
+  const MIN_RANGE_BYTES = 64 * 1024;
+  let maxRangeBytes = DEFAULT_RANGE_BYTES;
+
+  self.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || data.type !== 'ovtorrent-stream-config') return;
+    const bytes = Number(data.rangeBytes);
+    if (Number.isFinite(bytes) && bytes >= MIN_RANGE_BYTES) maxRangeBytes = Math.floor(bytes);
+  });
+
+  /** "bytes=N-" or an oversized "bytes=N-M" becomes "bytes=N-(N+maxRangeBytes-1)". */
+  function boundRange(value) {
+    const match = /^\s*bytes=(\d+)-(\d*)\s*$/i.exec(value || '');
+    if (!match) return value;
+    const start = Number(match[1]);
+    const limit = start + maxRangeBytes - 1;
+    if (match[2] !== '' && Number(match[2]) <= limit) return value;
+    return `bytes=${start}-${limit}`;
+  }
 
   const prefix = () => self.registration.scope + 'webtorrent/';
 
   async function askWindow(request) {
-    const { url, method, headers, destination } = request;
+    const { url, method, destination } = request;
+    const headers = Object.fromEntries(request.headers.entries());
+    if (headers.range && destination !== 'document') headers.range = boundRange(headers.range);
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     return new Promise((resolve) => {
       for (const client of clients) {
@@ -30,7 +59,7 @@
           {
             url,
             method,
-            headers: Object.fromEntries(headers.entries()),
+            headers,
             scope: self.registration.scope,
             destination,
             type: 'webtorrent',
