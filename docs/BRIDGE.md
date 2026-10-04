@@ -13,7 +13,17 @@ El puente resuelve exactamente eso: es un programa pequeño, gratuito y de códi
 - Node.js ≥ 20 en la máquina que hará de puente (el mismo PC, un NAS, una Raspberry…). No hace falta que sea la misma máquina donde está el navegador.
 - Conexión a Internet en esa máquina. Si el navegador está en otra red, el puente y el navegador se encuentran igualmente a través de los trackers WebSocket públicos y WebRTC (STUN); en redes muy restrictivas sin UDP saliente puede no establecerse la conexión.
 
-## Puesta en marcha
+## Puesta en marcha sin terminal (doble clic)
+
+1. Instala Node.js LTS desde <https://nodejs.org> (solo la primera vez).
+2. Descarga el repositorio (botón **Code → Download ZIP** en GitHub) y descomprímelo.
+3. Entra en la carpeta `bridge/` y haz doble clic en:
+   - **Windows**: `iniciar-puente.cmd`
+   - **macOS / Linux**: `iniciar-puente.sh` (si el sistema lo abre como texto, dale permiso de ejecución o lánzalo desde la carpeta con `./iniciar-puente.sh`).
+4. La primera vez instala sus dependencias y te pide un código de emparejamiento (mínimo 6 caracteres). Lo guarda en `codigo.txt` junto al script para no volver a pedirlo.
+5. Deja la ventana abierta y, en OVtorrent, ve a **Ajustes → Calidad y búfer → Puente**, introduce el mismo código y pega el magnet.
+
+## Puesta en marcha desde la terminal
 
 ```bash
 git clone https://github.com/js3rr4n0/OVtorrent

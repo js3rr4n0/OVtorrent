@@ -393,3 +393,20 @@ Con el magnet de Big Buck Bunny (276 MB, web seed HTTPS de webtorrent.io) el rep
 
 - El selector «Calidad» del reproductor solo lista variantes HLS declaradas o ítems de la misma playlist con calidad distinta: un torrent tiene un único archivo de vídeo, así que no hay nada que elegir.
 - Las piezas detrás del playhead siguen en memoria hasta el siguiente reinicio (WebTorrent no admite borrado pieza a pieza).
+
+---
+
+## 2026-10-04 — Puente con doble clic
+
+### Petición
+
+El usuario insiste en reproducir magnets de enjambres BitTorrent clásicos (1337x y similares) «de manera web». Se le explicó de nuevo que un navegador no dispone de sockets TCP/UDP ni de ninguna API que lo permita en una web normal (Direct Sockets solo existe para Isolated Web Apps instaladas por política en Chrome, no para sitios web), por lo que no hay nada que «inventar» dentro del navegador: la única vía es un proceso fuera de él. Para reducir la fricción al mínimo, el puente ya existente se arranca con doble clic.
+
+### Archivos
+
+- `bridge/iniciar-puente.cmd` (Windows) y `bridge/iniciar-puente.sh` (macOS/Linux): comprueban Node.js, instalan dependencias la primera vez, piden y recuerdan el código en `codigo.txt` (ignorado por git) y arrancan el puente.
+- `bridge/.gitignore`, `docs/BRIDGE.md` (sección «Puesta en marcha sin terminal»).
+
+### Limitación
+
+Sigue haciendo falta Node.js ≥ 20 instalado en un PC, NAS o Raspberry del usuario. No se añaden servidores de terceros ni servicios de pago.
