@@ -20,11 +20,11 @@ No todos los TV boxes soportan WebRTC, MediaSource Extensions, PWA instalable o 
 
 | Capacidad                       | Impacto si falta                                                         |
 | ------------------------------- | ------------------------------------------------------------------------ |
-| WebRTC DataChannel              | Sin streaming P2P (Fase 2). Solo archivos locales/URLs.                  |
-| MediaSource Extensions          | Sin reproducción progresiva P2P; solo archivos completos.                |
+| WebRTC DataChannel              | Sin streaming P2P. Solo archivos locales/URLs.                           |
+| MediaSource Extensions          | Necesario para HLS (Fase 3); el P2P no depende de él.                    |
 | H.264/AAC                       | La mayoría de MP4 no se reproducirá.                                     |
 | HEVC / AV1                      | Contenido 4K en esos codecs no se reproducirá; no hay transcodificación. |
-| Service Worker                  | Sin offline ni instalación.                                              |
+| Service Worker                  | Sin offline, sin instalación y sin streaming P2P.                        |
 | Memoria (`deviceMemory` ≤ 2 GB) | Usar preset «Ahorro de datos» y almacén «Sin persistencia».              |
 
 ## Recomendaciones por plataforma (orientativas)

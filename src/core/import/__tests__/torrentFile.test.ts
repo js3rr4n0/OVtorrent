@@ -39,7 +39,7 @@ describe('parseTorrentFile', () => {
       'wss://tracker.example/announce',
       'wss://b/announce',
     ]);
-    expect(magnetFromTorrent(summary)).toContain(`urn%3Abtih%3A${summary.infoHash}`);
+    expect(magnetFromTorrent(summary)).toContain(`xt=urn:btih:${summary.infoHash}`);
   });
 
   it('handles single-file torrents', async () => {

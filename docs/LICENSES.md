@@ -4,13 +4,15 @@ OVtorrent se publica bajo licencia **MIT** (ver `LICENSE`). Todas las dependenci
 
 ## Dependencias de producción (incluidas en el build)
 
-| Paquete                         | Licencia | Uso                                     |
-| ------------------------------- | -------- | --------------------------------------- |
-| react, react-dom                | MIT      | Interfaz                                |
-| react-router-dom                | MIT      | Hash routing                            |
-| zustand                         | MIT      | Estado local                            |
-| zod                             | MIT      | Validación de esquemas                  |
-| workbox-* (vía vite-plugin-pwa) | MIT      | Service Worker / precache del app shell |
+| Paquete                                                            | Licencia                                                            | Uso                                                                                                                                     |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| react, react-dom                                                   | MIT                                                                 | Interfaz                                                                                                                                |
+| react-router-dom                                                   | MIT                                                                 | Hash routing                                                                                                                            |
+| zustand                                                            | MIT                                                                 | Estado local                                                                                                                            |
+| zod                                                                | MIT                                                                 | Validación de esquemas                                                                                                                  |
+| workbox-* (vía vite-plugin-pwa)                                    | MIT                                                                 | Service Worker / precache del app shell                                                                                                 |
+| webtorrent (bundle `dist/webtorrent.min.js`, cargado bajo demanda) | MIT                                                                 | Motor P2P en navegador (WebRTC + trackers WebSocket); incluye bittorrent-tracker, bittorrent-protocol, parse-torrent y otras, todas MIT |
+| `public/webtorrent-sw.js`                                          | MIT (reimplementación del protocolo de `webtorrent/dist/sw.min.js`) | Handler de streaming en el Service Worker                                                                                               |
 
 ## Dependencias de desarrollo
 
@@ -26,16 +28,16 @@ OVtorrent se publica bajo licencia **MIT** (ver `LICENSE`). Todas las dependenci
 | eslint, @eslint/js, typescript-eslint, eslint-plugin-react-hooks, eslint-plugin-react-refresh, globals | MIT        |
 | prettier                                                                                               | MIT        |
 | fake-indexeddb                                                                                         | Apache-2.0 |
+| bittorrent-tracker (server, solo en e2e; dependencia de webtorrent)                                    | MIT        |
 
 ## Previstas en fases posteriores
 
 | Paquete                              | Licencia   | Fase |
 | ------------------------------------ | ---------- | ---- |
-| webtorrent                           | MIT        | 2    |
 | hls.js (si se necesita MSE para HLS) | Apache-2.0 | 3    |
 
 ## Servicios públicos del protocolo
 
-Los trackers WebSocket públicos que WebTorrent usa para descubrir peers (Fase 2) son infraestructura del protocolo, no servicios de OVtorrent. Se configurarán de forma opcional y documentada; la aplicación no depende de ninguno en concreto.
+Los trackers WebSocket públicos que WebTorrent usa para descubrir peers son infraestructura del protocolo, no servicios de OVtorrent. Están configurados de forma opcional (Ajustes → Calidad y búfer → P2P) y la aplicación no depende de ninguno en concreto.
 
 Para regenerar el inventario completo: `npx license-checker --summary` (no incluido como dependencia).

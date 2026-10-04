@@ -21,9 +21,7 @@ test.describe('OVtorrent static PWA', () => {
     await expect(page.getByRole('heading', { name: 'Calidad y búfer' })).toBeVisible();
   });
 
-  test('imports a magnet, persists it locally and explains the Phase 2 limitation', async ({
-    page,
-  }) => {
+  test('imports a magnet, persists it locally and starts the P2P engine', async ({ page }) => {
     await page.goto('/#/import');
     await page
       .getByLabel('Enlace magnet')
@@ -35,8 +33,9 @@ test.describe('OVtorrent static PWA', () => {
     await page.reload();
     await expect(page.getByRole('link', { name: 'Demo' })).toBeVisible();
     await page.getByRole('link', { name: 'Reproducir' }).first().click();
-    await expect(page.getByText('Esta fuente no se puede reproducir todavía')).toBeVisible();
-    await expect(page.getByText(/Fase 2/)).toBeVisible();
+    // The engine loads, registers the streaming worker and starts looking for peers.
+    await expect(page.getByText('webtorrent', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/buscando peers compatibles con WebRTC/)).toBeVisible();
   });
 
   test('creates a playlist and exports it as JSON', async ({ page }) => {

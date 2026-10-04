@@ -142,9 +142,7 @@ export async function parseTorrentFile(buffer: ArrayBuffer): Promise<TorrentSumm
 }
 
 export function magnetFromTorrent(summary: TorrentSummary): string {
-  const p = new URLSearchParams();
-  p.append('xt', `urn:btih:${summary.infoHash}`);
-  p.append('dn', summary.name);
-  for (const t of summary.announce) p.append('tr', t);
-  return `magnet:?${p.toString()}`;
+  const parts = [`xt=urn:btih:${summary.infoHash}`, `dn=${encodeURIComponent(summary.name)}`];
+  for (const t of summary.announce) parts.push(`tr=${encodeURIComponent(t)}`);
+  return `magnet:?${parts.join('&')}`;
 }

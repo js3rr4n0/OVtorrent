@@ -1,5 +1,11 @@
+import { useState } from 'react';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
-import { Card, Field, Input, Notice, PageHeader, Select } from '@/components/ui';
+import { Button, Card, Field, Input, Notice, PageHeader, Select, Toggle } from '@/components/ui';
+import {
+  DEFAULT_WEBSOCKET_TRACKERS,
+  isWebSocketTracker,
+  normalizeTrackerList,
+} from '@/core/streaming/webtorrent/trackers';
 import { formatBytes } from '@/components/format';
 import {
   BUFFER_PRESET_VALUES,
@@ -7,6 +13,7 @@ import {
   BUFFER_STORE_KINDS,
   estimateBufferBytes,
   MAX_MEMORY_BUFFER_BYTES,
+  MAX_TRACKERS,
   QUALITY_MODES,
   QUALITY_PRIORITIES,
   RESOLUTIONS,
@@ -317,7 +324,95 @@ export function PlaybackSettingsPage() {
             ) : null}
           </Notice>
         </Card>
+        <P2pCard />
       </div>
     </div>
+  );
+}
+
+function P2pCard() {
+  const p2p = useSettingsStore((s) => s.settings.p2p);
+  const update = useSettingsStore((s) => s.update);
+  const [draft, setDraft] = useState(p2p.customTrackers.join('\n'));
+  const [trackerError, setTrackerError] = useState<string | null>(null);
+  const saveTrackers = () => {
+    const lines = draft
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const invalid = lines.filter((l) => !isWebSocketTracker(l));
+    if (invalid.length > 0) {
+      setTrackerError(`Solo se admiten trackers ws:// o wss://: ${invalid[0]}`);
+      return;
+    }
+    if (lines.length > MAX_TRACKERS) {
+      setTrackerError(`Máximo ${MAX_TRACKERS} trackers`);
+      return;
+    }
+    setTrackerError(null);
+    update((s) => ({ ...s, p2p: { ...s.p2p, customTrackers: normalizeTrackerList(lines) } }));
+  };
+  return (
+    <Card className="md:col-span-2">
+      <h2 className="mb-3 text-lg font-semibold">P2P (WebTorrent en navegador)</h2>
+      <Toggle
+        id="p2p-default-trackers"
+        label="Usar los trackers WebSocket públicos por defecto"
+        hint={`Son una dependencia del protocolo WebTorrent, no un servicio de esta aplicación: ${DEFAULT_WEBSOCKET_TRACKERS.join(', ')}`}
+        checked={p2p.useDefaultTrackers}
+        onChange={(v) => update((s) => ({ ...s, p2p: { ...s.p2p, useDefaultTrackers: v } }))}
+      />
+      <Toggle
+        id="p2p-upload"
+        label="Compartir piezas con otros peers mientras reproduces"
+        hint="BitTorrent es recíproco: desactivarlo puede reducir la velocidad que otros peers te ofrecen."
+        checked={p2p.uploadEnabled}
+        onChange={(v) => update((s) => ({ ...s, p2p: { ...s.p2p, uploadEnabled: v } }))}
+      />
+      <Toggle
+        id="p2p-restart"
+        label="Reiniciar la sesión al superar el límite de memoria"
+        hint="Libera todas las piezas descargadas y continúa desde la posición actual. Si lo desactivas, la memoria puede crecer hasta que el navegador cierre la pestaña."
+        checked={p2p.restartOnMemoryLimit}
+        onChange={(v) => update((s) => ({ ...s, p2p: { ...s.p2p, restartOnMemoryLimit: v } }))}
+      />
+      <Field label="Segundos sin peers antes de avisar" htmlFor="p2p-timeout">
+        <Input
+          id="p2p-timeout"
+          type="number"
+          min={5}
+          max={300}
+          value={p2p.noPeersTimeoutSeconds}
+          onChange={(e) =>
+            update((s) => ({
+              ...s,
+              p2p: { ...s.p2p, noPeersTimeoutSeconds: Number(e.target.value) || 30 },
+            }))
+          }
+        />
+      </Field>
+      <Field
+        label="Trackers WebSocket adicionales (uno por línea)"
+        htmlFor="p2p-trackers"
+        hint="ws:// o wss://. Los trackers UDP/HTTP no son accesibles desde un navegador."
+        error={trackerError ?? undefined}
+      >
+        <textarea
+          id="p2p-trackers"
+          className="min-h-24 w-full rounded-md border border-[var(--ovt-border)] bg-[var(--ovt-surface)] p-2 font-mono text-sm"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          spellCheck={false}
+        />
+      </Field>
+      <Button onClick={saveTrackers}>Guardar trackers</Button>
+      <div className="mt-3">
+        <Notice kind="info">
+          Al reproducir, el navegador se conecta a los trackers WebSocket y a otros peers mediante
+          WebRTC. Los peers y los servidores STUN usados por WebRTC pueden conocer tu IP pública; la
+          aplicación no opera ningún servidor para ocultarla.
+        </Notice>
+      </div>
+    </Card>
   );
 }

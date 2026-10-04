@@ -26,7 +26,7 @@ const LICENSES = [
   ['vite-plugin-pwa / workbox', 'MIT'],
   ['vitest, @testing-library/*', 'MIT'],
   ['@playwright/test', 'Apache-2.0'],
-  ['webtorrent (Fase 2)', 'MIT'],
+  ['webtorrent', 'MIT'],
 ];
 
 export function AboutPage() {

@@ -80,3 +80,73 @@ Ninguno: el repositorio estaba vacío.
 - **Fase 2**: integración de WebTorrent para navegador (`WebTorrentStreamingEngine`), selección de archivo dentro del torrent, métricas de peers y velocidad, prioridad secuencial, búfer temporal conectado al motor, manejo avanzado de errores, limpieza avanzada, configuración de trackers WebSocket públicos documentada como dependencia del protocolo.
 - **Fase 3**: importación M3U/M3U8, HLS multivariant, selección de calidad por variantes HLS, subtítulos SRT→VTT, audio multicanal, mejoras para TV boxes, compatibilidad ampliada.
 - **Fase 4**: optimización de memoria, Worker para parsing y métricas, exportación completa, diagnóstico ampliado, pruebas de compatibilidad, auditoría de seguridad y accesibilidad.
+
+---
+
+## 2026-10-04 — Fase 2 completada
+
+### Fase completada
+
+Fase 2: integración de WebTorrent para navegador, selección de archivo dentro del torrent, métricas de peers y velocidad, prioridad secuencial, búfer temporal, manejo avanzado de errores y limpieza avanzada.
+
+### Archivos creados
+
+- `src/core/streaming/webtorrent/types.ts` (tipos estructurales del subconjunto de API de WebTorrent v3), `trackers.ts` (trackers WebSocket públicos por defecto y validación), `windowPolicy.ts` (ventana, piezas críticas, throttling, piezas expiradas, archivo por defecto), `EphemeralChunkStore.ts` (adaptador abstract-chunk-store → `EphemeralBufferStore`), `loadWebTorrent.ts` (carga diferida del bundle, cliente compartido, registro del Service Worker de streaming), `WebTorrentStreamingEngine.ts` (motor y sesión), `index.ts`.
+- `public/webtorrent-sw.js`: handler de streaming para el Service Worker (reimplementación legible del protocolo de `webtorrent/dist/sw.min.js`, sin `skipWaiting`).
+- `src/types/webtorrent-dist.d.ts`: tipado del bundle `webtorrent/dist/webtorrent.min.js`.
+- `src/test/fakes/FakeWebTorrentClient.ts`, `src/core/streaming/webtorrent/__tests__/engine.test.ts`, `windowPolicy.test.ts`.
+- `e2e/p2p.spec.ts` (streaming P2P real con tracker local y dos contextos de navegador), `e2e/types.d.ts`.
+
+### Archivos modificados
+
+- `package.json` (dependencia `webtorrent`), `vite.config.ts` (`importScripts` del handler, `globIgnores`, CSP `connect-src ws:`), `tsconfig.node.json` (`DOM.Iterable`).
+- `src/core/schemas/settings.ts`: sección `p2p` (trackers por defecto, trackers propios, subida, tiempo sin peers, reinicio por memoria) opcional con valores por defecto para no invalidar ajustes guardados.
+- `src/core/buffer/IndexedDbBufferStore.ts`: metadatos de piezas en memoria (sin releer datos de IndexedDB para ventana ni uso), límite infinito permitido.
+- `src/core/streaming/registry.ts`: magnet/torrent → `WebTorrentStreamingEngine` cuando hay WebRTC DataChannel, Service Worker y contexto seguro; en caso contrario, causas explícitas.
+- `src/core/import/magnet.ts`, `torrentFile.ts`: el `xt=urn:btih:` se mantiene literal (los parsers rechazan la urn percent-encoded; detectado por el test P2P real).
+- `src/features/player/usePlaybackSession.ts` (metadatos, índice de archivo, corrección de sobrescritura del estado de error), `PlayerPage.tsx` (selector de archivo del torrent, aviso de conexión, lista de avisos), `PlayerIndicators.tsx` (velocidad de subida, caché de la sesión P2P).
+- `src/features/settings/PlaybackSettingsPage.tsx`: tarjeta P2P.
+- Textos de `MagnetImport`, `AboutPage`, `DiagnosticsPage`; tests de registro, páginas y streaming; `e2e/app.spec.ts`.
+- Documentación: README, ARCHITECTURE, STREAMING-LIMITATIONS, LOCAL-STORAGE, PRIVACY, SECURITY, LICENSES, TESTING, BROWSER-COMPATIBILITY.
+
+### Funcionalidades implementadas
+
+- Reproducción de magnets y `.torrent` en el navegador con WebTorrent (WebRTC DataChannels + trackers WebSocket), entregada al `<video>` como stream HTTP con rangos por el Service Worker.
+- Selección del archivo dentro del torrent (por defecto el mayor con contenedor reproducible); solo se descargan piezas del archivo elegido.
+- Prioridad secuencial con piezas críticas en el playhead y en cada seek; ventana futura aplicada mediante throttling de descarga; reinicio automático desde la posición actual al superar el límite de memoria; liberación de peers, store y object URLs al detener; limpieza en ciclo de vida de la página.
+- Búfer temporal en RAM (predeterminado) o IndexedDB efímero inyectado en WebTorrent; nunca OPFS.
+- Métricas: peers, velocidad de descarga y subida, disponibilidad, búfer, bytes en caché, bitrate aproximado, resolución, reinicios.
+- Manejo de errores: sin WebRTC/Service Worker/contexto seguro, timeout de metadatos, sin peers tras el tiempo configurado («Esta fuente no tiene peers compatibles con el transporte web disponible en este navegador»), avisos del protocolo, autoplay bloqueado, errores de codec/contenedor del `<video>`.
+- Ajustes P2P: trackers por defecto (desactivables), trackers propios validados, compartir piezas, tiempo sin peers, reinicio por memoria.
+
+### Decisiones arquitectónicas
+
+- Un único Service Worker: el handler de streaming se importa dentro del worker de Workbox porque las peticiones de una página siempre van al worker que la controla; en desarrollo se registra solo.
+- Reimplementación del `sw.min.js` de WebTorrent para no forzar `skipWaiting()` y conservar el aviso de actualización de la PWA.
+- Store efímero propio inyectado en WebTorrent (RAM o IndexedDB) en lugar de su OPFS por defecto.
+- Ventana por throttling y reinicio por memoria, no por borrado de piezas por debajo del motor (lo corrompería).
+- Cliente WebTorrent compartido por pestaña, cargado bajo demanda como chunk separado.
+
+### Limitaciones conocidas
+
+- Solo peers WebRTC/WebTorrent; sin trackers WebSocket alcanzables no habrá peers.
+- El throttling limita la descarga adelantada pero no cancela piezas una a una; el reinicio por memoria implica un corte breve.
+- Contenedores no reproducibles progresivamente por el navegador (MKV con codecs no soportados, MP4 sin `faststart`) pueden fallar aunque haya peers.
+- Bitrate aproximado; sin selección de pista de audio ni subtítulos SRT (Fase 3).
+- El `BrowserServer` depende de streams en respuestas del Service Worker (Safari antiguo no soportado).
+
+### Pruebas ejecutadas
+
+- `npm run lint`, `npm run typecheck`: sin errores.
+- `npm run test`: 13 archivos, 82 tests, todos pasan.
+- `npm run build`: sitio estático; bundle de WebTorrent como chunk diferido (~222 KB, 67 KB gzip).
+- `npm run test:e2e`: 9 escenarios Playwright, incluido streaming P2P real entre dos contextos de Chromium con tracker local.
+
+### Comandos utilizados
+
+`npm install webtorrent`, `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run test:e2e`.
+
+### Tareas pendientes
+
+- **Fase 3**: importación M3U/M3U8, HLS multivariant, selección de calidad por variantes HLS, subtítulos SRT→VTT, audio multicanal, mejoras para TV boxes, compatibilidad ampliada.
+- **Fase 4**: optimización de memoria, Worker para parsing y métricas, exportación completa, diagnóstico ampliado, pruebas de compatibilidad, auditoría de seguridad y accesibilidad.

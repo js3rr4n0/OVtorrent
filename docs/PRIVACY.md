@@ -36,8 +36,10 @@ Borrar los datos del sitio desde el navegador tiene el mismo efecto y la aplicac
 
 ## Qué conexiones realiza el navegador
 
-- **Fase 1 (actual):** ninguna conexión salvo la descarga de la propia aplicación y, si reproduces una URL remota que hayas introducido, la conexión directa a ese servidor, que verá tu IP.
-- **Fase 2 (WebTorrent):** el navegador se conectará a trackers WebSocket públicos (son dependencias del protocolo WebTorrent, no servicios de OVtorrent) y a otros peers mediante WebRTC. **Los peers de una red P2P pueden conocer la IP pública necesaria para establecer la conexión.** La aplicación no opera un servidor propio para ocultar la IP. Si decides usar una VPN externa, no forma parte de la aplicación.
+- **Archivos locales:** ninguna conexión.
+- **URLs remotas:** si reproduces una URL que hayas introducido, el navegador se conecta directamente a ese servidor, que verá tu IP.
+- **Magnets / torrents (WebTorrent):** al reproducir, el navegador se conecta a los trackers WebSocket configurados (por defecto `wss://tracker.openwebtorrent.com`, `wss://tracker.webtorrent.dev` y `wss://tracker.btorrent.xyz`, dependencias públicas del protocolo WebTorrent, no servicios de OVtorrent; puedes desactivarlos o sustituirlos en Ajustes → Calidad y búfer → P2P) y a otros peers mediante WebRTC. Para establecer la conexión WebRTC, la librería consulta servidores STUN públicos (`stun.l.google.com`, `global.stun.twilio.com`). **Los trackers, los servidores STUN y los peers de una red P2P pueden conocer tu IP pública.** Mientras reproduces, también compartes las piezas que ya tienes con otros peers (puede desactivarse en los mismos ajustes). La aplicación no opera un servidor propio para ocultar la IP. Si decides usar una VPN externa, no forma parte de la aplicación.
+- Nada de lo anterior ocurre hasta que pulsas reproducir sobre un elemento P2P. La importación de magnets y `.torrent` es puramente local.
 
 ## Permisos
 

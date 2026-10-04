@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { Button, EmptyState, Field, Input, Notice, Select } from '@/components/ui';
-import { formatTime } from '@/components/format';
+import { formatBytes, formatTime } from '@/components/format';
 import { hasFullscreen, hasPictureInPicture } from '@/core/streaming/capabilities';
 import type { MediaItem } from '@/core/schemas/media';
 import { useHistoryStore } from '@/state/historyStore';
@@ -49,7 +49,8 @@ export function PlayerPage() {
     const p = getProgress(id);
     return p && !p.completed ? p.positionSeconds : 0;
   });
-  const playback = usePlaybackSession(item, videoRef, startAt);
+  const [fileIndex, setFileIndex] = useState<number | undefined>(undefined);
+  const playback = usePlaybackSession(item, videoRef, startAt, fileIndex);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -309,9 +310,19 @@ export function PlayerPage() {
           ) : null}
         </Notice>
       ) : null}
+      {playback.session?.engine === 'webtorrent' && playback.state === 'loading' ? (
+        <Notice kind="info">
+          Conectando con trackers WebSocket y buscando peers compatibles con WebRTC… Puede tardar;
+          si la fuente no tiene peers web, no será posible reproducirla.
+        </Notice>
+      ) : null}
       {playback.metrics?.warnings.length ? (
-        <Notice kind={playback.state === 'error' ? 'error' : 'info'}>
-          {playback.metrics.warnings.join(' ')}
+        <Notice kind={playback.state === 'error' ? 'error' : 'warning'}>
+          <ul className="list-disc pl-5">
+            {playback.metrics.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
         </Notice>
       ) : null}
 
@@ -347,6 +358,26 @@ export function PlayerPage() {
 
       <div className="grid gap-3 md:grid-cols-2">
         <div className="ovt-surface rounded-lg p-3">
+          {playback.metadata && playback.metadata.files.length > 1 ? (
+            <Field
+              label="Archivo dentro del torrent"
+              htmlFor="torrent-file"
+              hint="Solo se descargan piezas del archivo elegido. Los contenedores marcados como no reproducibles pueden fallar en este navegador."
+            >
+              <Select
+                id="torrent-file"
+                value={fileIndex ?? playback.metadata.selectedFileIndex}
+                onChange={(e) => setFileIndex(Number(e.target.value))}
+              >
+                {playback.metadata.files.map((f) => (
+                  <option key={f.index} value={f.index}>
+                    {f.name} · {formatBytes(f.length)}
+                    {f.isPlayable ? '' : ' · probablemente no reproducible'}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
           <Field
             label="Subtítulos (archivo .vtt local)"
             htmlFor="subs"

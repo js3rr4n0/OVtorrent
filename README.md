@@ -4,11 +4,11 @@
 
 PWA 100 % estática: se ejecuta íntegramente en el navegador, sin backend, sin base de datos, sin cuentas, sin claves API y sin servicios de pago. Se despliega como archivos estáticos en cualquier servidor HTTP (GitHub Pages, GitLab Pages, Cloudflare Pages, Netlify, Nginx o un servidor local).
 
-> Estado: **Fase 1 completada** (PWA estática, biblioteca y playlists locales, importación de magnet/.torrent/archivo/URL/JSON, reproductor HTML5, configuración de búfer y calidad, modo TV básico, diagnóstico, limpieza de sesión). El motor WebTorrent para navegador llega en la Fase 2; hasta entonces los magnets se importan y organizan pero **no se reproducen**, y la aplicación lo dice así. Ver [recap.md](recap.md).
+> Estado: **Fase 2 completada**. Fase 1: PWA estática, biblioteca y playlists locales, importación de magnet/.torrent/archivo/URL/JSON, reproductor HTML5, configuración de búfer y calidad, modo TV básico, diagnóstico, limpieza de sesión. Fase 2: motor **WebTorrent en el navegador** (WebRTC + trackers WebSocket), selección de archivo dentro del torrent, métricas de peers y velocidad, prioridad secuencial con ventana temporal, búfer efímero en RAM o IndexedDB, reinicio automático al superar el límite de memoria y limpieza avanzada. Ver [recap.md](recap.md).
 
 ## Qué hace (y qué no)
 
-- Reproduce contenido multimedia **autorizado** desde: magnet links y archivos `.torrent` (importación en Fase 1, reproducción en Fase 2), archivos multimedia locales, URLs multimedia introducidas manualmente, playlists JSON. M3U/M3U8 y HLS llegan en la Fase 3.
+- Reproduce contenido multimedia **autorizado** desde: magnet links y archivos `.torrent` (WebTorrent en navegador, solo peers compatibles con WebRTC), archivos multimedia locales, URLs multimedia introducidas manualmente, playlists JSON. M3U/M3U8 y HLS llegan en la Fase 3.
 - Mantiene **todo** en el navegador: preferencias, tema, configuración del reproductor, calidad y búfer, playlists, historial, favoritos, metadatos introducidos por ti, modo TV y diagnósticos no sensibles.
 - Prioriza un **modo de reproducción temporal**: no descarga intencionadamente el archivo completo, pide las piezas cercanas a la posición actual, mantiene una ventana futura e histórica configurable y limpia el resto al detener, cambiar de fuente o cerrar.
 - **No** incluye buscador, indexador, scraping, catálogo remoto, cuentas, telemetría, analítica ni proxy.
@@ -17,13 +17,13 @@ No describimos el producto como «no descarga nada»: toda reproducción necesit
 
 ## Restricciones de diseño (obligatorias)
 
-| Requisito                        | Cumplimiento                                                                                                                                            |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sin base de datos                | Solo `localStorage`, `sessionStorage`, IndexedDB **local** (búfer efímero opcional) y memoria. IndexedDB no es una base de datos remota ni un servidor. |
-| Sin backend                      | Ningún proceso Node.js en producción. Node solo compila y sirve en desarrollo.                                                                          |
-| Sin servicios de pago ni cuentas | No hay claves API, suscripciones, Firebase, Supabase, OAuth, trackers privados ni señalización propia.                                                  |
-| Open source                      | Licencia MIT; dependencias MIT/Apache-2.0 ([docs/LICENSES.md](docs/LICENSES.md)).                                                                       |
-| Offline                          | La interfaz y la configuración funcionan sin red (Service Worker con app shell). El streaming P2P y las URLs remotas necesitan Internet.                |
+| Requisito                        | Cumplimiento                                                                                                                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sin base de datos                | Solo `localStorage`, `sessionStorage`, IndexedDB **local** (búfer efímero opcional) y memoria. IndexedDB no es una base de datos remota ni un servidor.                                                             |
+| Sin backend                      | Ningún proceso Node.js en producción. Node solo compila y sirve en desarrollo.                                                                                                                                      |
+| Sin servicios de pago ni cuentas | No hay claves API, suscripciones, Firebase, Supabase, OAuth, trackers privados ni señalización propia. Los trackers WebSocket públicos son una dependencia del protocolo WebTorrent, configurables y desactivables. |
+| Open source                      | Licencia MIT; dependencias MIT/Apache-2.0 ([docs/LICENSES.md](docs/LICENSES.md)).                                                                                                                                   |
+| Offline                          | La interfaz y la configuración funcionan sin red (Service Worker con app shell). El streaming P2P y las URLs remotas necesitan Internet.                                                                            |
 
 ## Limitaciones técnicas reales
 
@@ -43,7 +43,7 @@ npm run dev        # servidor de desarrollo (Vite)
 npm run build      # salida estática en dist/
 npm run preview    # sirve dist/ localmente
 npm run test       # Vitest + React Testing Library
-npm run test:e2e   # Playwright (usa npm run preview)
+npm run test:e2e   # Playwright (usa npm run preview); incluye streaming P2P real con tracker local
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
 npm run clean      # elimina dist/, coverage/, informes

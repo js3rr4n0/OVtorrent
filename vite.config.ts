@@ -10,8 +10,8 @@ import { fileURLToPath, URL } from 'node:url';
  * - `blob:` is required for Blob URLs used by the HTML5 player and future
  *   MediaSource-based streaming.
  * - `media-src` allows user-entered HTTP(S) media URLs (confirmed by the user).
- * - `connect-src wss:`/`https:` is needed by WebTorrent trackers (WebRTC
- *   signalling over WebSocket) once the WebTorrent engine lands (Phase 2).
+ * - `connect-src wss:`/`ws:`/`https:` is needed by WebTorrent trackers (WebRTC
+ *   signalling over WebSocket; plain ws:// only makes sense on LAN trackers).
  * - WebRTC DataChannels are not governed by CSP.
  *
  * It is injected only on build: the Vite dev server needs inline scripts for
@@ -24,7 +24,7 @@ const CSP = [
   "img-src 'self' data: blob:",
   "font-src 'self'",
   "media-src 'self' blob: https: http:",
-  "connect-src 'self' blob: https: wss:",
+  "connect-src 'self' blob: https: wss: ws:",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",
@@ -84,6 +84,11 @@ export default defineConfig({
         // Only the app shell and static assets are precached. Media, torrents
         // and blobs are never cached by the Service Worker.
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        globIgnores: ['webtorrent-sw.js'],
+        // WebTorrent streaming handler (see public/webtorrent-sw.js): it runs
+        // inside the same worker because a page's requests always go to the
+        // worker that controls it, whatever the URL.
+        importScripts: ['webtorrent-sw.js'],
         navigateFallback: 'index.html',
         // Take control of already-open pages as soon as the worker activates so
         // the first visit is offline-capable without a reload. Updates still

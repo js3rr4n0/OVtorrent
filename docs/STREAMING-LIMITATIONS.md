@@ -9,7 +9,7 @@ Estas limitaciones son inherentes a una aplicación P2P que se ejecuta exclusiva
 - La velocidad de reproducción depende de la velocidad efectiva de los peers; pocos peers pueden causar pausas.
 - El navegador o la librería P2P pueden aplicar cachés internas que no siempre controla la aplicación.
 
-## WebTorrent en navegador (Fase 2)
+## WebTorrent en navegador
 
 - Un navegador solo puede conectarse a peers compatibles con **WebRTC/WebTorrent**. No puede abrir sockets TCP/UDP, por lo que **no se comunica con la mayoría de los peers BitTorrent tradicionales**. Habrá menos peers que en un cliente nativo y muchos torrents no tendrán peers accesibles.
 - El descubrimiento de peers depende de trackers **WebSocket** (`ws://`, `wss://`) públicos. Son una dependencia del protocolo, no un servicio de OVtorrent; se encapsulan en configuración y se documentan como tales. No se implementa tracker privado ni servidor de señalización propio.
@@ -36,7 +36,15 @@ Estas limitaciones son inherentes a una aplicación P2P que se ejecuta exclusiva
 - La PWA necesita conexión a Internet para descubrir peers y recibir contenido P2P.
 - La interfaz y la configuración funcionan offline; el streaming no.
 
-## Fase 1 (actual)
+## Cómo funciona la ventana temporal con WebTorrent
 
-- Los magnets y `.torrent` se importan, validan y organizan, pero **no se reproducen** hasta integrar el motor WebTorrent en la Fase 2. El reproductor lo indica explícitamente.
-- Archivos locales y URLs http(s) se reproducen con el elemento `<video>` nativo.
+- El archivo elegido se descarga con estrategia **secuencial** y las piezas del búfer inicial a partir del playhead se marcan críticas en cada tick y en cada seek.
+- Cuando el navegador ya tiene más segundos almacenados que la ventana futura, la descarga se **limita a 64 KB/s** hasta que el búfer baje: la aplicación no pide al enjambre datos muy por delante de la reproducción. No es una cancelación pieza a pieza: WebTorrent sigue atendiendo las peticiones de rango del elemento `<video>`.
+- Las piezas ya descargadas **no se eliminan individualmente**: WebTorrent asume que toda pieza verificada sigue disponible. Cuando lo descargado supera el límite de memoria configurado, la sesión se reinicia desde la posición actual (opción activada por defecto) y libera todas las piezas. Es un corte breve con reconexión a peers.
+- Un seek lejano hace que el navegador cancele la petición de rango anterior; WebTorrent descarta esa selección y las nuevas piezas pasan a ser críticas.
+- Los contenedores que el navegador no puede reproducir progresivamente (MKV con codecs no soportados, MP4 con el índice `moov` al final…) pueden no reproducirse aunque haya peers. No hay transcodificación ni remuxado.
+- El bitrate mostrado es una aproximación (tamaño del archivo ÷ duración).
+
+## Requisitos del navegador para P2P
+
+WebRTC con DataChannels, Service Worker activo y contexto seguro (HTTPS o `localhost`). Sin cualquiera de ellos, el reproductor explica la causa y no simula la reproducción. MediaSource Extensions **no** es necesario para el streaming P2P: el vídeo se entrega como una respuesta HTTP con rangos servida por el Service Worker.

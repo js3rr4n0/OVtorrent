@@ -17,12 +17,17 @@ Navegador
   |
   +-- Motor P2P (src/core/streaming)
   |     +-- StreamingEngine / StreamingSession (abstracción)
-  |     +-- HtmlMediaEngine (Fase 1: archivos locales y URLs)
-  |     +-- WebTorrentStreamingEngine (Fase 2: WebTorrent en navegador + WebRTC DataChannels)
+  |     +-- HtmlMediaEngine (archivos locales y URLs)
+  |     +-- WebTorrentStreamingEngine (WebTorrent en navegador: WebRTC DataChannels
+  |         + trackers WebSocket; estrategia secuencial, piezas críticas, ventana con
+  |         throttling, reinicio por límite de memoria)
   |
   +-- Motor de reproducción
-  |     +-- HTMLVideoElement, Blob URLs (Fase 1)
-  |     +-- MediaSource Extensions (Fase 2/3)
+  |     +-- HTMLVideoElement, Blob URLs (archivos locales, URLs)
+  |     +-- Stream HTTP con rangos servido por el Service Worker (P2P): el <video>
+  |         pide /webtorrent/<infoHash>/<archivo> y el worker lo responde con las
+  |         piezas que el cliente WebTorrent de la pestaña le entrega por MessageChannel
+  |     +-- MediaSource Extensions (Fase 3, HLS)
   |
   +-- Búfer temporal (src/core/buffer)
   |     +-- EphemeralBufferStore: NoPersistence (defecto) | Memory | IndexedDb
@@ -34,8 +39,9 @@ Navegador
   |
   +-- Worker opcional (Fase 4: parsing de playlists, cálculos de piezas, métricas)
   |
-  +-- Service Worker (vite-plugin-pwa / Workbox)
+  +-- Service Worker (vite-plugin-pwa / Workbox + public/webtorrent-sw.js)
         +-- App shell y recursos estáticos
+        +-- Handler de streaming WebTorrent (importScripts); no cachea nada
         +-- No almacena torrents ni vídeos completos (sin runtime caching)
 ```
 
@@ -45,17 +51,18 @@ Navegador
 
 Sin React. Todo es testeable con Vitest sin DOM salvo donde se indica.
 
-| Módulo       | Responsabilidad                                                                                                                                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `schemas/`   | Esquemas Zod versionados: `MediaItem`, `Playlist` (v1), `Settings`, `HistoryEntry`, bundle de exportación. Son la única definición de datos aceptados.                                                             |
-| `storage/`   | `StorageAdapter` (localStorage o memoria como fallback), `readJson`/`writeJson` con validación, wrapper mínimo de IndexedDB.                                                                                       |
-| `buffer/`    | Contrato `EphemeralBufferStore` y sus tres implementaciones; política de ventanas.                                                                                                                                 |
-| `streaming/` | Contratos `StreamingEngine`, `StreamingSession`, `StreamingMetrics`; detección de capacidades; `HtmlMediaEngine`; `resolveEngine()` que decide qué motor sirve cada tipo de fuente y explica por qué no hay motor. |
-| `import/`    | Parsers seguros: magnet (btih hex/base32), `.torrent` (bencode propio, hash SHA-1 con WebCrypto), playlist JSON.                                                                                                   |
-| `security/`  | Sanitización de texto y validación de esquemas URL.                                                                                                                                                                |
-| `media/`     | Detección de codecs con `canPlayType`.                                                                                                                                                                             |
-| `tv/`        | Detección de plataformas TV por user agent y navegación espacial con teclas de flecha.                                                                                                                             |
-| `cleanup/`   | Registro central de tareas de limpieza y enlace con el ciclo de vida de la página.                                                                                                                                 |
+| Módulo                  | Responsabilidad                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `schemas/`              | Esquemas Zod versionados: `MediaItem`, `Playlist` (v1), `Settings`, `HistoryEntry`, bundle de exportación. Son la única definición de datos aceptados.                                                                                                                                                                                                                                                                                                                                                                         |
+| `storage/`              | `StorageAdapter` (localStorage o memoria como fallback), `readJson`/`writeJson` con validación, wrapper mínimo de IndexedDB.                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `buffer/`               | Contrato `EphemeralBufferStore` y sus tres implementaciones; política de ventanas.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `streaming/`            | Contratos `StreamingEngine`, `StreamingSession`, `StreamingMetrics`; detección de capacidades; `HtmlMediaEngine`; `resolveEngine()` que decide qué motor sirve cada tipo de fuente y explica por qué no hay motor.                                                                                                                                                                                                                                                                                                             |
+| `streaming/webtorrent/` | `WebTorrentStreamingEngine` (sesión P2P), `windowPolicy` (cálculo puro de ventana, piezas críticas, throttling, piezas expiradas, archivo por defecto), `EphemeralChunkStore` (adaptador abstract-chunk-store → `EphemeralBufferStore`), `trackers` (lista pública por defecto y validación), `loadWebTorrent` (carga diferida del bundle, cliente compartido, registro del Service Worker de streaming), `types` (tipos estructurales del subconjunto de API usado, implementados también por el cliente falso de los tests). |
+| `import/`               | Parsers seguros: magnet (btih hex/base32), `.torrent` (bencode propio, hash SHA-1 con WebCrypto), playlist JSON.                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `security/`             | Sanitización de texto y validación de esquemas URL.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `media/`                | Detección de codecs con `canPlayType`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `tv/`                   | Detección de plataformas TV por user agent y navegación espacial con teclas de flecha.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `cleanup/`              | Registro central de tareas de limpieza y enlace con el ciclo de vida de la página.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ### `src/state` — stores Zustand
 
@@ -112,11 +119,22 @@ El modo predeterminado del búfer es `NoPersistenceBufferStore`: la aplicación 
 ## Ciclo de una reproducción
 
 1. `PlayerPage` resuelve el elemento (biblioteca o cola de playlist) y llama a `resolveEngine(sourceType)`.
-2. Si no hay motor disponible (magnet en Fase 1, WebRTC ausente…), se muestra la interfaz de capacidad con las causas. No se simula nada.
+2. Si no hay motor disponible (WebRTC, Service Worker o contexto seguro ausentes…), se muestra la interfaz de capacidad con las causas. No se simula nada.
 3. Con motor, `usePlaybackSession` crea el `EphemeralBufferStore` configurado, registra una tarea en `SessionCleanup`, crea la sesión y la arranca sobre el `<video>`.
 4. Las métricas se muestrean una vez por segundo (throttling) y el uso del búfer cada dos.
 5. Un seek más allá de la ventana futura ejecuta `removeOutsideWindow` y una limpieza `far-seek`.
 6. Stop, cambio de elemento, desmontaje, `pagehide`, `beforeunload` y `visibilitychange→hidden` destruyen la sesión, revocan las object URLs y vacían el búfer. La limpieza es best effort: si el navegador mata el proceso no hay garantías.
+
+## Sesión WebTorrent paso a paso
+
+1. `createSession` comprueba capacidades (WebRTC DataChannel, Service Worker, contexto seguro).
+2. `metadata()` carga el bundle de WebTorrent (chunk diferido de ~220 KB), crea el cliente compartido de la pestaña (sin DHT, LSD, uTP ni UPnP: no existen en navegador) y añade el torrent con los trackers WebSocket configurados, `strategy: 'sequential'` y el store de piezas efímero. Resuelve cuando llegan los metadatos (lista de archivos). Si no llegan en 90 s, falla con «sin peers accesibles».
+3. `start()` asegura el Service Worker de streaming (`navigator.serviceWorker.ready` en producción; en desarrollo registra `webtorrent-sw.js` por su cuenta), crea el `BrowserServer` de WebTorrent, selecciona solo el archivo elegido (`file.select`, el resto `deselect`), marca críticas las primeras piezas y asigna `video.src = file.streamURL`.
+4. Cada segundo: `computeWindow` traduce la posición del vídeo a piezas (duración real o bitrate asumido), marca críticas las piezas del búfer inicial a partir del playhead, y si el navegador ya tiene más de `aheadSeconds` almacenados, limita la descarga a 64 KB/s (`client.throttleDownload`) hasta que el búfer baje. Un seek fuerza la re-priorización: el navegador cancela la petición de rango anterior y WebTorrent descarta esa selección.
+5. Si `torrent.downloaded` supera el límite de memoria y la opción está activa, la sesión destruye el torrent (liberando todas las piezas) y lo vuelve a añadir desde la posición actual. Es la única forma honesta de liberar memoria: WebTorrent asume que toda pieza verificada sigue disponible, por lo que no se eliminan piezas sueltas por debajo del motor.
+6. `stop()`/`destroy()`: se vacía el `<video>`, se destruye el torrent con su store, se vacía el `EphemeralBufferStore`, se restablece el throttling y se desregistran los listeners. `SessionCleanup` ejecuta lo mismo en `pagehide`, `beforeunload` y `visibilitychange`.
+
+Métricas: peers (`torrent.numPeers`), velocidad de descarga y subida, disponibilidad (muestreo de hasta 500 piezas del archivo frente a los bitfields de los peers, cacheado 5 s), segundos almacenados por el navegador, bytes en el store, bitrate aproximado (tamaño del archivo / duración), resolución del `<video>`, avisos (sin peers tras el tiempo configurado, errores del protocolo, autoplay bloqueado, reinicios por memoria).
 
 ## Decisiones
 
@@ -125,4 +143,7 @@ El modo predeterminado del búfer es `NoPersistenceBufferStore`: la aplicación 
 - **Zod en los límites**: importación, almacenamiento y configuración pasan siempre por esquemas `strict()`.
 - **IndexedDB solo como búfer efímero**: nunca para el archivo completo ni como "base de datos".
 - **Sin Dexie**: un wrapper de 60 líneas cubre el uso actual y evita una dependencia.
+- **Service Worker único**: las peticiones de una página siempre van al worker que la controla, así que el handler de streaming se importa dentro del worker de Workbox (`importScripts`) en lugar de registrarse en otro scope. Se reimplementa en `public/webtorrent-sw.js` (protocolo idéntico al `sw.min.js` de WebTorrent) para no llamar a `skipWaiting()` y conservar el aviso de actualización.
+- **Nunca OPFS**: el store por defecto de WebTorrent en Chromium es el Origin Private File System (disco). OVtorrent siempre inyecta su propio store efímero (RAM o IndexedDB local) para no escribir vídeos en disco.
+- **Ventana por throttling, no por borrado de piezas**: ver «Sesión WebTorrent paso a paso».
 - **CSP inyectada solo en build**: el servidor de desarrollo necesita scripts inline para React Fast Refresh.

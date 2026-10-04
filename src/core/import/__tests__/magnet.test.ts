@@ -14,7 +14,8 @@ describe('parseMagnet', () => {
     expect(r.magnet.displayName).toBe('Big Buck Bunny');
     expect(r.magnet.trackers).toHaveLength(2);
     expect(r.magnet.webSocketTrackers).toEqual(['wss://tracker.example/announce']);
-    expect(r.magnet.normalized.startsWith('magnet:?xt=urn%3Abtih%3A')).toBe(true);
+    expect(r.magnet.normalized.startsWith(`magnet:?xt=urn:btih:${HASH}`)).toBe(true);
+    expect(r.magnet.normalized).toContain('tr=wss%3A%2F%2Ftracker.example%2Fannounce');
   });
 
   it('accepts base32 hashes', () => {

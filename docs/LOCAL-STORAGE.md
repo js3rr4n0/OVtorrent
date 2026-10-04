@@ -23,11 +23,13 @@ Archivo torrent completo, vídeo completo, datos personales, IP en un servidor, 
 
 ## Modos del búfer temporal
 
-| Modo                                  | Comportamiento                                                                                                                                                     |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `no-persistence` (**predeterminado**) | La aplicación no guarda copia de las piezas. El motor y el navegador las mantienen en memoria lo justo para reproducir.                                            |
-| `memory`                              | `MemoryBufferStore` con límite configurable (16–512 MB); expulsa las piezas más antiguas al superar el límite.                                                     |
-| `indexeddb`                           | `IndexedDbBufferStore` para dispositivos con muy poca RAM. Sigue siendo local y efímero: se vacía al detener, cambiar de fuente, cerrar la sesión y en `pagehide`. |
+| Modo                                  | Comportamiento                                                                                                                                                                                                                  |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no-persistence` (**predeterminado**) | Las piezas del archivo en reproducción viven solo en la RAM de la pestaña (store efímero inyectado en WebTorrent) y se liberan al detener. Nunca se usa el Origin Private File System que WebTorrent elegiría por defecto.      |
+| `memory`                              | Igual que el anterior; se mantiene como opción explícita y, para el motor HTML5, expulsa las piezas más antiguas al superar el límite.                                                                                          |
+| `indexeddb`                           | `IndexedDbBufferStore` para dispositivos con muy poca RAM. Sigue siendo local y efímero: se vacía al detener, cambiar de fuente, cerrar la sesión y en `pagehide`. WebTorrent añade una pequeña caché LRU de 20 piezas delante. |
+
+Con el motor WebTorrent, el **límite de memoria** no expulsa piezas sueltas (el protocolo asume que toda pieza verificada sigue disponible): cuando lo descargado lo supera, la sesión se reinicia desde la posición actual liberando todas las piezas (Ajustes → Calidad y búfer → P2P).
 
 Política de ventanas (`computeWindowPolicy`): ventana histórica, posición actual, ventana futura, piezas prioritarias (posición actual y primer tercio de la ventana futura), piezas no prioritarias (resto de la ventana) y piezas expiradas (fuera de la ventana, eliminadas).
 

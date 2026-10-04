@@ -35,7 +35,9 @@ export function PlayerIndicators({
       <Row label="Búfer adelante">{metrics ? `${metrics.bufferedSeconds.toFixed(1)} s` : '—'}</Row>
       <Row label="Peers">{engine === 'html5' ? 'n/a (sin P2P)' : (metrics?.peers ?? '—')}</Row>
       <Row label="Velocidad">
-        {engine === 'html5' ? 'n/a' : formatSpeed(metrics?.downloadSpeedBps ?? 0)}
+        {engine === 'html5'
+          ? 'n/a'
+          : `↓ ${formatSpeed(metrics?.downloadSpeedBps ?? 0)} · ↑ ${formatSpeed(metrics?.uploadSpeedBps ?? 0)}`}
       </Row>
       <Row label="Disponibilidad">
         {metrics && Number.isFinite(metrics.availability)
@@ -43,7 +45,11 @@ export function PlayerIndicators({
           : 'n/d'}
       </Row>
       <Row label="Caché temporal">
-        {bufferUsage ? `${formatBytes(bufferUsage.bytes)} (${bufferUsage.kind})` : '—'}
+        {bufferUsage
+          ? `${formatBytes(bufferUsage.bytes)} (${bufferUsage.kind})`
+          : metrics && metrics.bufferedBytes > 0
+            ? `${formatBytes(metrics.bufferedBytes)} (sesión P2P)`
+            : '—'}
       </Row>
     </dl>
   );

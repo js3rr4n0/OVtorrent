@@ -5,6 +5,9 @@ import { resolveEngine } from '../registry';
 import { StreamingUnavailableError } from '../types';
 import type { MediaItem } from '@/core/schemas/media';
 import { FakeStreamingEngine } from '@/test/fakes';
+import { DEFAULT_SETTINGS } from '@/core/schemas/settings';
+
+const getSettings = () => DEFAULT_SETTINGS;
 
 const item = (sourceType: MediaItem['sourceType'], source = 'x'): MediaItem => ({
   id: crypto.randomUUID(),
@@ -34,15 +37,28 @@ describe('capabilities', () => {
 
 describe('resolveEngine', () => {
   it('uses the HTML5 engine for files and URLs', () => {
-    expect(resolveEngine('file').engine?.name).toBe('html5');
-    expect(resolveEngine('url').engine?.name).toBe('html5');
+    expect(resolveEngine('file', getSettings).engine?.name).toBe('html5');
+    expect(resolveEngine('url', getSettings).engine?.name).toBe('html5');
   });
-  it('explains why magnets cannot play yet, including missing WebRTC', () => {
-    const r = resolveEngine('magnet');
+  it('explains why magnets cannot play without WebRTC', () => {
+    const r = resolveEngine('magnet', getSettings);
     expect(r.engine).toBeNull();
-    expect(r.reasons.join(' ')).toMatch(/Fase 2/);
     expect(r.reasons.join(' ')).toMatch(/WebRTC/);
-    expect(r.futureNote).toMatch(/WebRTC/);
+  });
+  it('uses the WebTorrent engine when WebRTC, DataChannels and Service Worker exist', () => {
+    const g = globalThis as Record<string, unknown>;
+    const PC = function () {} as unknown as { prototype: Record<string, unknown> };
+    PC.prototype.createDataChannel = () => undefined;
+    g.RTCPeerConnection = PC;
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: {} });
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+    try {
+      const r = resolveEngine('magnet', getSettings);
+      expect(r.engine?.name).toBe('webtorrent');
+    } finally {
+      delete g.RTCPeerConnection;
+      delete (navigator as unknown as Record<string, unknown>).serviceWorker;
+    }
   });
 });
 

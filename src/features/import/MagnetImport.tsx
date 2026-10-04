@@ -98,8 +98,9 @@ export function MagnetImport({ onImported }: { onImported: (msg: string, to?: st
         <Input id="magnet-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
       </Field>
       <Notice kind="info">
-        En esta fase los magnets se importan y organizan; la reproducción P2P mediante WebTorrent en
-        navegador llega en la Fase 2 y solo podrá conectar con peers compatibles con WebRTC.
+        La reproducción usa WebTorrent en el navegador: solo se conecta con peers compatibles con
+        WebRTC a través de trackers WebSocket. Muchos torrents tradicionales no tendrán peers
+        accesibles desde la web.
       </Notice>
       <div className="mt-4">
         <Button type="submit" variant="primary">

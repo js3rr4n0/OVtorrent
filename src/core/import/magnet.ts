@@ -71,11 +71,11 @@ export function parseMagnet(
   const dn = params.get('dn') ?? undefined;
   const displayName = dn ? dn.replace(/[<>]/g, '').slice(0, 200) : undefined;
 
-  const normalized = new URLSearchParams();
-  normalized.append('xt', `urn:btih:${infoHash}`);
-  if (displayName) normalized.append('dn', displayName);
-  for (const t of trackers) normalized.append('tr', t);
-  for (const w of webSeeds) normalized.append('ws', w);
+  // `xt` must stay literal (`urn:btih:`): torrent parsers reject a percent-encoded urn.
+  const parts = [`xt=urn:btih:${infoHash}`];
+  if (displayName) parts.push(`dn=${encodeURIComponent(displayName)}`);
+  for (const t of trackers) parts.push(`tr=${encodeURIComponent(t)}`);
+  for (const w of webSeeds) parts.push(`ws=${encodeURIComponent(w)}`);
 
   return {
     ok: true,
@@ -85,7 +85,7 @@ export function parseMagnet(
       trackers,
       webSeeds,
       webSocketTrackers,
-      normalized: `magnet:?${normalized.toString()}`,
+      normalized: `magnet:?${parts.join('&')}`,
     },
   };
 }

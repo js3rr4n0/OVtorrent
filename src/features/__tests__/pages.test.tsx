@@ -132,7 +132,7 @@ describe('StorageSettingsPage', () => {
 });
 
 describe('PlayerPage', () => {
-  it('explains honestly why a magnet cannot be played yet', async () => {
+  it('explains honestly why a magnet cannot be played in this browser', async () => {
     const item = createMediaItem({
       sourceType: 'magnet',
       source: `magnet:?xt=urn:btih:${HASH}`,
@@ -144,7 +144,7 @@ describe('PlayerPage', () => {
     expect(
       await screen.findByText('Esta fuente no se puede reproducir todavía'),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Fase 2/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Service Worker/).length).toBeGreaterThan(0);
     expect(screen.getByText(/WebRTC DataChannels/)).toBeInTheDocument();
   });
   it('asks to re-select a local file that is not attached', async () => {

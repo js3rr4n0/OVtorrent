@@ -6,6 +6,7 @@ import { resolveBufferWindow } from '@/core/schemas/settings';
 import {
   resolveEngine,
   StreamingUnavailableError,
+  type MediaMetadata,
   type StreamingMetrics,
   type StreamingSession,
 } from '@/core/streaming';
@@ -14,6 +15,7 @@ import { useSessionStore } from '@/state/sessionStore';
 
 export interface PlaybackSessionState {
   session: StreamingSession | null;
+  metadata: MediaMetadata | null;
   metrics: StreamingMetrics | null;
   state: StreamingSession['state'] | 'unavailable';
   reasons: string[];
@@ -35,18 +37,21 @@ const EMPTY_METRICS: StreamingMetrics = {
 
 /**
  * Owns the lifecycle of one StreamingSession bound to a <video>. Creates it
- * when the item changes, polls metrics (throttled) and guarantees cleanup
- * on unmount, item change and page lifecycle events.
+ * when the item (or the selected file inside a torrent) changes, polls
+ * metrics (throttled) and guarantees cleanup on unmount, item change and
+ * page lifecycle events.
  */
 export function usePlaybackSession(
   item: MediaItem | undefined,
   videoRef: React.RefObject<HTMLVideoElement | null>,
   startAt: number,
+  fileIndex: number | undefined,
 ) {
   const settings = useSettingsStore((s) => s.settings);
   const file = useSessionStore((s) => (item ? s.files.get(item.id) : undefined));
   const [state, setState] = useState<PlaybackSessionState>({
     session: null,
+    metadata: null,
     metrics: null,
     state: 'idle',
     reasons: [],
@@ -62,10 +67,11 @@ export function usePlaybackSession(
     const video = videoRef.current;
     if (!video) return;
 
-    const resolution = resolveEngine(item.sourceType);
+    const resolution = resolveEngine(item.sourceType, () => useSettingsStore.getState().settings);
     if (!resolution.engine) {
       setState({
         session: null,
+        metadata: null,
         metrics: null,
         state: 'unavailable',
         reasons: resolution.reasons,
@@ -75,10 +81,11 @@ export function usePlaybackSession(
       });
       return;
     }
-    const bufferStore = createBufferStore(
-      settings.buffer.storeKind,
-      settings.buffer.memoryLimitBytes,
-    );
+    // The HTML5 engine keeps its own object URLs; the P2P engine owns its store.
+    const bufferStore =
+      resolution.engine.name === 'html5'
+        ? createBufferStore(settings.buffer.storeKind, settings.buffer.memoryLimitBytes)
+        : null;
     const window = resolveBufferWindow(settings);
     const engine = resolution.engine;
     let unsubscribe: (() => void) | null = null;
@@ -95,20 +102,29 @@ export function usePlaybackSession(
         sessionRef.current = session;
         unregister = sessionCleanup.register(`session:${session.id}`, async () => {
           await session.clearTemporaryData();
-          await bufferStore.clear();
+          await bufferStore?.clear();
         });
         unsubscribe = session.subscribe((s) => {
           if (!cancelled) setState((prev) => ({ ...prev, state: s.state, metrics: s.metrics() }));
         });
         setState({
           session,
+          metadata: null,
           metrics: EMPTY_METRICS,
           state: 'loading',
           reasons: [],
           bufferStore,
           error: null,
         });
-        await session.start({ videoElement: video, startAtSeconds: startAt, bufferWindow: window });
+        const metadata = await session.metadata();
+        if (cancelled) return;
+        setState((prev) => ({ ...prev, metadata }));
+        await session.start({
+          videoElement: video,
+          startAtSeconds: startAt,
+          fileIndex,
+          bufferWindow: window,
+        });
         // Metrics are throttled to one update per second to keep TV boxes responsive.
         timer = setInterval(() => {
           if (!cancelled)
@@ -116,15 +132,25 @@ export function usePlaybackSession(
         }, 1000);
       } catch (err) {
         if (cancelled) return;
+        // Stop listening before tearing the session down so its final
+        // "stopped" state does not overwrite the explanation below.
+        unsubscribe?.();
+        unsubscribe = null;
+        if (timer) clearInterval(timer);
+        console.warn('[ovtorrent] no se pudo iniciar la sesión de reproducción', err);
         const reasons = err instanceof StreamingUnavailableError ? err.reasons : [];
         setState({
           session: null,
+          metadata: null,
           metrics: null,
           state: 'unavailable',
           reasons: [err instanceof Error ? err.message : 'No se pudo crear la sesión', ...reasons],
           bufferStore: null,
           error: err instanceof Error ? err.message : String(err),
         });
+        const stale = sessionRef.current;
+        sessionRef.current = null;
+        if (stale) void stale.destroy();
       }
     })();
 
@@ -137,13 +163,13 @@ export function usePlaybackSession(
       sessionRef.current = null;
       if (session) {
         void session.destroy();
-        void bufferStore.clear();
+        void bufferStore?.clear();
         void sessionCleanup.run('item-change');
       }
     };
-    // `settings` intentionally read once per item: changing buffer settings mid-playback
-    // takes effect on the next session rather than restarting the current one.
-  }, [item?.id, file, startAt]);
+    // `settings` is read once per session on purpose: changing buffer settings
+    // mid-playback applies to the next session instead of restarting this one.
+  }, [item?.id, file, startAt, fileIndex]);
 
   /** Seeks; a jump beyond the buffer window clears temporary data outside it. */
   const seek = useCallback(

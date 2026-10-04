@@ -41,14 +41,15 @@ style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob:;
 font-src 'self';
 media-src 'self' blob: https: http:;
-connect-src 'self' blob: https: wss:;
+connect-src 'self' blob: https: wss: ws:;
 worker-src 'self' blob:;
 object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 ```
 
 - `blob:` permite las object URLs del reproductor y MediaSource.
 - `media-src https: http:` permite URLs introducidas por el usuario.
-- `connect-src wss: https:` será necesario para trackers WebTorrent (Fase 2). Los DataChannels WebRTC no están gobernados por CSP.
+- `connect-src wss: ws: https:` permite los trackers WebTorrent (WebSocket). `ws:` sin cifrar solo tiene sentido para trackers en red local; los públicos usan `wss:`. Los DataChannels WebRTC no están gobernados por CSP.
+- `media-src 'self'` cubre el stream P2P, que se sirve desde el propio origen (`/webtorrent/<infoHash>/<archivo>`) por el Service Worker.
 - `style-src 'unsafe-inline'` es necesario por los estilos inline que React aplica a algunos elementos; no afecta a scripts.
 
 Además: `<meta name="referrer" content="no-referrer">`.
@@ -56,6 +57,15 @@ Además: `<meta name="referrer" content="no-referrer">`.
 ## Service Worker
 
 Solo precachea el app shell (`js`, `css`, `html`, `svg`, `png`, `webmanifest`). No hay runtime caching: nunca almacena vídeos, torrents ni respuestas de terceros.
+
+El handler de streaming (`public/webtorrent-sw.js`, importado por el worker de Workbox) solo atiende URLs bajo `<scope>webtorrent/`. No accede a la red: pide los datos a la ventana que ejecuta el cliente WebTorrent mediante `MessageChannel` y los transmite como `ReadableStream`. Las respuestas llevan `Cache-Control: no-store`.
+
+## P2P
+
+- Los trackers introducidos por el usuario se validan (`ws://` o `wss://`, ≤ 512 caracteres, máximo 20).
+- Las piezas se verifican por hash SHA-1 dentro de WebTorrent antes de servirse al reproductor.
+- El bundle de WebTorrent se carga solo cuando se reproduce un magnet (chunk diferido del propio build, nunca desde un CDN).
+- Nunca se usa el Origin Private File System: las piezas viven en RAM o en IndexedDB local y se borran al detener.
 
 ## Reportar vulnerabilidades
 

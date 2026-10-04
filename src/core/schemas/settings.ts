@@ -47,6 +47,32 @@ export type BufferStoreKind = (typeof BUFFER_STORE_KINDS)[number];
 
 export const THEMES = ['system', 'dark', 'light'] as const;
 
+export const MAX_TRACKERS = 20;
+
+export const p2pSettingsSchema = z
+  .object({
+    /** Use the public WebSocket trackers bundled as protocol defaults. */
+    useDefaultTrackers: z.boolean(),
+    /** Extra WebSocket trackers (ws:// or wss://) added by the user. */
+    customTrackers: z.array(z.string().max(512)).max(MAX_TRACKERS),
+    /** Seed pieces back to other peers while playing (BitTorrent reciprocity). */
+    uploadEnabled: z.boolean(),
+    /** Seconds without peers before the player shows the no-peers notice. */
+    noPeersTimeoutSeconds: z.number().int().min(5).max(300),
+    /** Restart the torrent (freeing memory) when downloaded data exceeds the memory limit. */
+    restartOnMemoryLimit: z.boolean(),
+  })
+  .strict();
+export type P2pSettings = z.infer<typeof p2pSettingsSchema>;
+
+export const DEFAULT_P2P_SETTINGS: P2pSettings = {
+  useDefaultTrackers: true,
+  customTrackers: [],
+  uploadEnabled: true,
+  noPeersTimeoutSeconds: 30,
+  restartOnMemoryLimit: true,
+};
+
 export const settingsSchema = z
   .object({
     version: z.literal(1),
@@ -91,6 +117,7 @@ export const settingsSchema = z
         confirmExternalUrls: z.boolean(),
       })
       .strict(),
+    p2p: p2pSettingsSchema.optional().default(DEFAULT_P2P_SETTINGS),
   })
   .strict();
 
@@ -125,6 +152,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   tv: { mode: 'auto', hideDiagnostics: false, largeText: true, highContrast: true },
   privacy: { confirmExternalUrls: true },
+  p2p: DEFAULT_P2P_SETTINGS,
 };
 
 export function resolveBufferWindow(settings: Settings): BufferWindowConfig {
