@@ -47,6 +47,19 @@ export function TvSettingsPage() {
             onChange={(v) => update((s) => ({ ...s, tv: { ...s.tv, highContrast: v } }))}
           />
           <Toggle
+            id="tv-simplified"
+            label="Panel de reproducción simplificado"
+            hint="Muestra solo play/pausa, ±10 s, anterior/siguiente, detener y pantalla completa; el resto tras «Más»."
+            checked={tv.simplifiedPlayer}
+            onChange={(v) => update((s) => ({ ...s, tv: { ...s.tv, simplifiedPlayer: v } }))}
+          />
+          <Toggle
+            id="tv-autofocus"
+            label="Enfocar el botón de reproducir al abrir el reproductor"
+            checked={tv.autoFocusPlayer}
+            onChange={(v) => update((s) => ({ ...s, tv: { ...s.tv, autoFocusPlayer: v } }))}
+          />
+          <Toggle
             id="tv-hide-diag"
             label="Ocultar diagnósticos en el reproductor"
             checked={tv.hideDiagnostics}

@@ -21,7 +21,7 @@ Estas limitaciones son inherentes a una aplicación P2P que se ejecuta exclusiva
 - El soporte depende de WebRTC, MediaSource Extensions, codecs y políticas del navegador.
 - No se garantiza reproducción 4K en todos los TV boxes.
 - **No hay transcodificación**: un archivo único 4K no puede convertirse a 1080p o 720p. La aplicación no usa servicios cloud de transcodificación ni incluye un transcodificador local porque debe ser 100 % web.
-- Los controles de resolución y bitrate solo pueden **elegir entre variantes existentes**: varias versiones (480p/720p/1080p/4K) con el mismo título en una playlist, o variantes declaradas en una playlist HLS multivariant (Fase 3) si el navegador lo permite.
+- Los controles de resolución y bitrate solo pueden **elegir entre variantes existentes**: varias versiones (480p/720p/1080p/4K) con el mismo título en una playlist, o variantes declaradas en una playlist HLS multivariant. Con HLS nativo (Safari) la variante la decide el navegador y los ajustes de calidad solo informan.
 - Si un formato no es compatible, se explica el motivo y no se promete conversión automática.
 
 ## Almacenamiento y limpieza
@@ -44,6 +44,13 @@ Estas limitaciones son inherentes a una aplicación P2P que se ejecuta exclusiva
 - Un seek lejano hace que el navegador cancele la petición de rango anterior; WebTorrent descarta esa selección y las nuevas piezas pasan a ser críticas.
 - Los contenedores que el navegador no puede reproducir progresivamente (MKV con codecs no soportados, MP4 con el índice `moov` al final…) pueden no reproducirse aunque haya peers. No hay transcodificación ni remuxado.
 - El bitrate mostrado es una aproximación (tamaño del archivo ÷ duración).
+
+## HLS
+
+- Requiere soporte nativo (`<video>` con `.m3u8`) o MediaSource Extensions para hls.js. Sin ninguno de los dos, se informa.
+- El servidor debe permitir CORS para las listas y los segmentos; el contenido con DRM (FairPlay, Widevine) no es compatible.
+- Las pistas de audio alternativas y los subtítulos solo aparecen si la playlist los declara; el audio multicanal depende de los codecs del dispositivo (p. ej. E-AC-3 no está disponible en todos los navegadores).
+- hls.js recupera errores de red y de decodificación hasta 3 veces y después se detiene con un mensaje claro.
 
 ## Requisitos del navegador para P2P
 

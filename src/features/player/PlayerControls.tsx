@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button, Select } from '@/components/ui';
 import { formatTime } from '@/components/format';
 
@@ -15,6 +16,9 @@ export interface PlayerControlsProps {
   hasQueue: boolean;
   pipAvailable: boolean;
   fullscreenAvailable: boolean;
+  /** TV mode: show only the essential controls; the rest unfold behind "Más". */
+  simplified?: boolean;
+  autoFocusPlay?: boolean;
   onTogglePlay: () => void;
   onStop: () => void;
   onSeek: (seconds: number) => void;
@@ -31,6 +35,8 @@ export interface PlayerControlsProps {
 }
 
 export function PlayerControls(p: PlayerControlsProps) {
+  const [expanded, setExpanded] = useState(false);
+  const showAll = !p.simplified || expanded;
   return (
     <div className="ovt-surface rounded-lg p-3" aria-label="Controles del reproductor" role="group">
       <div className="flex items-center gap-2">
@@ -53,9 +59,11 @@ export function PlayerControls(p: PlayerControlsProps) {
         <Button onClick={p.onPrev} disabled={!p.hasQueue} aria-label="Anterior">
           ⏮
         </Button>
-        <Button onClick={() => p.onSkip(-30)} aria-label="Retroceder 30 segundos">
-          −30s
-        </Button>
+        {showAll ? (
+          <Button onClick={() => p.onSkip(-30)} aria-label="Retroceder 30 segundos">
+            −30s
+          </Button>
+        ) : null}
         <Button onClick={() => p.onSkip(-10)} aria-label="Retroceder 10 segundos">
           −10s
         </Button>
@@ -63,8 +71,8 @@ export function PlayerControls(p: PlayerControlsProps) {
           variant="primary"
           onClick={p.onTogglePlay}
           aria-label={p.playing ? 'Pausar' : 'Reproducir'}
-          autoFocus
-          className="min-w-20"
+          autoFocus={p.autoFocusPlay !== false}
+          className="min-w-20 tv:min-w-32"
         >
           {p.playing ? '⏸ Pausa' : '▶ Play'}
         </Button>
@@ -74,78 +82,87 @@ export function PlayerControls(p: PlayerControlsProps) {
         <Button onClick={() => p.onSkip(10)} aria-label="Adelantar 10 segundos">
           +10s
         </Button>
-        <Button onClick={() => p.onSkip(30)} aria-label="Adelantar 30 segundos">
-          +30s
-        </Button>
+        {showAll ? (
+          <Button onClick={() => p.onSkip(30)} aria-label="Adelantar 30 segundos">
+            +30s
+          </Button>
+        ) : null}
         <Button onClick={p.onNext} disabled={!p.hasQueue} aria-label="Siguiente">
           ⏭
-        </Button>
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button
-          onClick={p.onToggleMute}
-          aria-label={p.muted ? 'Activar sonido' : 'Silenciar'}
-          aria-pressed={p.muted}
-        >
-          {p.muted ? '🔇' : '🔊'}
-        </Button>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="sr-only">Volumen</span>
-          <input
-            type="range"
-            aria-label="Volumen"
-            min={0}
-            max={1}
-            step={0.05}
-            value={p.muted ? 0 : p.volume}
-            onChange={(e) => p.onVolume(Number(e.target.value))}
-            className="min-h-12 w-28"
-          />
-        </label>
-        <label className="flex items-center gap-1 text-sm">
-          Velocidad
-          <Select
-            aria-label="Velocidad"
-            value={String(p.rate)}
-            onChange={(e) => p.onRate(Number(e.target.value))}
-            className="w-24"
-          >
-            {[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => (
-              <option key={r} value={r}>
-                {r}×
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label className="flex items-center gap-1 text-sm">
-          Repetir
-          <Select
-            aria-label="Repetición"
-            value={p.repeat}
-            onChange={(e) => p.onRepeat(e.target.value as RepeatMode)}
-            className="w-32"
-          >
-            <option value="off">No</option>
-            <option value="one">Elemento</option>
-            <option value="all">Playlist</option>
-          </Select>
-        </label>
-        <Button onClick={p.onToggleShuffle} aria-pressed={p.shuffle} disabled={!p.hasQueue}>
-          🔀 Aleatorio
         </Button>
         <Button
           onClick={p.onFullscreen}
           disabled={!p.fullscreenAvailable}
           aria-label="Pantalla completa"
         >
-          ⛶ Pantalla completa
+          ⛶
         </Button>
-        {p.pipAvailable ? (
-          <Button onClick={p.onPip} aria-label="Picture-in-picture">
-            ▣ PiP
+        {p.simplified ? (
+          <Button onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
+            {expanded ? 'Menos' : 'Más'}
           </Button>
         ) : null}
       </div>
+      {showAll ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button
+            onClick={p.onToggleMute}
+            aria-label={p.muted ? 'Activar sonido' : 'Silenciar'}
+            aria-pressed={p.muted}
+          >
+            {p.muted ? '🔇' : '🔊'}
+          </Button>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="sr-only">Volumen</span>
+            <input
+              type="range"
+              aria-label="Volumen"
+              min={0}
+              max={1}
+              step={0.05}
+              value={p.muted ? 0 : p.volume}
+              onChange={(e) => p.onVolume(Number(e.target.value))}
+              className="min-h-12 w-28"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-sm">
+            Velocidad
+            <Select
+              aria-label="Velocidad"
+              value={String(p.rate)}
+              onChange={(e) => p.onRate(Number(e.target.value))}
+              className="w-24"
+            >
+              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => (
+                <option key={r} value={r}>
+                  {r}×
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="flex items-center gap-1 text-sm">
+            Repetir
+            <Select
+              aria-label="Repetición"
+              value={p.repeat}
+              onChange={(e) => p.onRepeat(e.target.value as RepeatMode)}
+              className="w-32"
+            >
+              <option value="off">No</option>
+              <option value="one">Elemento</option>
+              <option value="all">Playlist</option>
+            </Select>
+          </label>
+          <Button onClick={p.onToggleShuffle} aria-pressed={p.shuffle} disabled={!p.hasQueue}>
+            🔀 Aleatorio
+          </Button>
+          {p.pipAvailable ? (
+            <Button onClick={p.onPip} aria-label="Picture-in-picture">
+              ▣ PiP
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

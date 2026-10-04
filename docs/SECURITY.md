@@ -16,6 +16,9 @@ Todo lo que entra pasa por esquemas Zod `strict()` (`src/core/schemas`):
 - **Archivos `.torrent`**: decodificador bencode propio con límites (≤ 4 MB, ≤ 2000 archivos); solo se extraen nombre, lista de archivos, trackers y hash. El archivo no se guarda.
 - **URLs**: solo `http:`, `https:` y `blob:`. Se bloquean `javascript:`, `vbscript:`, `file:`, `about:` y `data:` (no es necesario para fuentes multimedia). Se rechazan credenciales embebidas. Las URLs externas requieren confirmación del usuario (configurable).
 - **Metadatos**: sin `<` ni `>` ni caracteres de control. React escapa todas las cadenas; además `sanitizeText` las limpia antes de guardar.
+- **Listas M3U/M3U8**: ≤ 2 MB, ≤ 500 entradas, títulos sanitizados, solo `http(s)` y magnets (los esquemas peligrosos se rechazan línea a línea), URLs relativas solo con URL base explícita. Descargar una lista por URL requiere confirmación y usa `credentials: 'omit'`.
+- **Subtítulos**: ≤ 2 MB; en la conversión SRT → WebVTT se eliminan todas las etiquetas salvo `<i>`, `<b>`, `<u>` y `<v>` y se escapan `&`, `<`, `>`. Los subtítulos del torrent se descargan al búfer efímero y se convierten localmente.
+- **HLS**: hls.js se empaqueta en el build (chunk diferido); nunca se carga desde CDN. Las listas y segmentos se piden sin credenciales.
 - **Bundle de exportación/importación**: mismo tratamiento; ≤ 10 MB.
 
 ## Confirmaciones

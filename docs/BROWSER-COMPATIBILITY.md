@@ -4,31 +4,33 @@ La aplicación se compila para `es2020` y se ha probado en Chromium (Playwright)
 
 ## APIs requeridas y su uso
 
-| API                                       | Uso                                                                | Si falta                                                                                 |
-| ----------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| ES2020, módulos ES                        | Toda la app                                                        | No arranca (navegadores muy antiguos).                                                   |
-| `localStorage`                            | Preferencias, biblioteca, playlists, historial                     | Funciona solo en memoria; se avisa.                                                      |
-| `IndexedDB`                               | Búfer efímero opcional                                             | Se usa memoria.                                                                          |
-| `crypto.randomUUID` / `crypto.subtle`     | IDs y hash de `.torrent`                                           | Fallback a generador propio de UUID; el hash SHA-1 requiere WebCrypto (contexto seguro). |
-| `HTMLVideoElement`, Blob URLs             | Reproducción Fase 1                                                | Sin reproducción.                                                                        |
-| Service Worker + Cache Storage            | PWA / offline de la interfaz y entrega del stream P2P al `<video>` | Sin offline, sin instalación y sin P2P; se informa.                                      |
-| `RTCPeerConnection` + DataChannel         | WebTorrent                                                         | Sin P2P; se informa.                                                                     |
-| `MediaSource` / `ManagedMediaSource`      | HLS (Fase 3)                                                       | No afecta al P2P: el stream llega como HTTP con rangos.                                  |
-| `document.pictureInPictureEnabled`        | Botón PiP                                                          | Botón oculto.                                                                            |
-| `document.fullscreenEnabled`              | Pantalla completa                                                  | Botón deshabilitado.                                                                     |
-| `navigator.storage.estimate`              | Diagnóstico                                                        | «n/d».                                                                                   |
-| `navigator.connection`, `deviceMemory`    | Diagnóstico                                                        | «no expuesta».                                                                           |
-| `showOpenFilePicker` (File System Access) | Carpetas locales (Fase 3)                                          | Solo `<input type="file">`.                                                              |
+| API                                                  | Uso                                                                | Si falta                                                                                 |
+| ---------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| ES2020, módulos ES                                   | Toda la app                                                        | No arranca (navegadores muy antiguos).                                                   |
+| `localStorage`                                       | Preferencias, biblioteca, playlists, historial                     | Funciona solo en memoria; se avisa.                                                      |
+| `IndexedDB`                                          | Búfer efímero opcional                                             | Se usa memoria.                                                                          |
+| `crypto.randomUUID` / `crypto.subtle`                | IDs y hash de `.torrent`                                           | Fallback a generador propio de UUID; el hash SHA-1 requiere WebCrypto (contexto seguro). |
+| `HTMLVideoElement`, Blob URLs                        | Reproducción Fase 1                                                | Sin reproducción.                                                                        |
+| Service Worker + Cache Storage                       | PWA / offline de la interfaz y entrega del stream P2P al `<video>` | Sin offline, sin instalación y sin P2P; se informa.                                      |
+| `RTCPeerConnection` + DataChannel                    | WebTorrent                                                         | Sin P2P; se informa.                                                                     |
+| `MediaSource` / `ManagedMediaSource`                 | HLS mediante hls.js cuando no hay soporte nativo                   | Sin HLS salvo soporte nativo. No afecta al P2P.                                          |
+| `video.canPlayType('application/vnd.apple.mpegurl')` | HLS nativo (Safari, algunos TV)                                    | Se usa hls.js si hay MSE.                                                                |
+| `AudioTrackList`                                     | Pistas de audio alternativas en archivos/URLs                      | Solo las pistas que gestione hls.js en HLS.                                              |
+| `document.pictureInPictureEnabled`                   | Botón PiP                                                          | Botón oculto.                                                                            |
+| `document.fullscreenEnabled`                         | Pantalla completa                                                  | Botón deshabilitado.                                                                     |
+| `navigator.storage.estimate`                         | Diagnóstico                                                        | «n/d».                                                                                   |
+| `navigator.connection`, `deviceMemory`               | Diagnóstico                                                        | «no expuesta».                                                                           |
+| `showOpenFilePicker` (File System Access)            | Carpetas locales (pendiente)                                       | Solo `<input type="file">`.                                                              |
 
 ## Navegadores
 
-| Navegador                     | Estado esperado                                                                                                                    |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Chrome / Edge / Chromium ≥ 90 | Completo.                                                                                                                          |
-| Firefox ≥ 90                  | Completo salvo File System Access API y `deviceMemory`.                                                                            |
-| Safari ≥ 15.4 (macOS/iOS)     | Interfaz completa; PWA instalable desde «Compartir». MSE en iOS solo a partir de iOS 17 (`ManagedMediaSource`). WebRTC disponible. |
-| Samsung Internet              | Similar a Chromium.                                                                                                                |
-| Navegadores de TV             | Ver `TV-COMPATIBILITY.md`; verificar con `/#/diagnostics`.                                                                         |
+| Navegador                     | Estado esperado                                                                                                                                                                                                                    |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome / Edge / Chromium ≥ 90 | Completo.                                                                                                                                                                                                                          |
+| Firefox ≥ 90                  | Completo salvo File System Access API y `deviceMemory`.                                                                                                                                                                            |
+| Safari ≥ 15.4 (macOS/iOS)     | Interfaz completa; PWA instalable desde «Compartir». HLS nativo (la variante la decide el navegador). MSE en iOS solo a partir de iOS 17 (`ManagedMediaSource`, que hls.js usa con `preferManagedMediaSource`). WebRTC disponible. |
+| Samsung Internet              | Similar a Chromium.                                                                                                                                                                                                                |
+| Navegadores de TV             | Ver `TV-COMPATIBILITY.md`; verificar con `/#/diagnostics`.                                                                                                                                                                         |
 
 ## Codecs
 

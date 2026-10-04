@@ -101,3 +101,31 @@ export async function storageEstimate(): Promise<{ usage?: number; quota?: numbe
     return {};
   }
 }
+
+/** Native HLS playback (Safari, some TV browsers): the <video> element understands .m3u8 directly. */
+export function hasNativeHls(): boolean {
+  if (typeof document === 'undefined') return false;
+  try {
+    const v = document.createElement('video');
+    return Boolean(
+      v.canPlayType('application/vnd.apple.mpegurl') || v.canPlayType('application/x-mpegURL'),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** True when hls.js could run: MediaSource (or ManagedMediaSource on iOS 17+) is available. */
+export function hasMseForHls(): boolean {
+  return hasMediaSource() || hasManagedMediaSource();
+}
+
+/** The HTML5 AudioTrackList API (Safari, Chromium behind flags). */
+export function hasAudioTracksApi(): boolean {
+  if (typeof document === 'undefined') return false;
+  try {
+    return 'audioTracks' in document.createElement('video');
+  } catch {
+    return false;
+  }
+}

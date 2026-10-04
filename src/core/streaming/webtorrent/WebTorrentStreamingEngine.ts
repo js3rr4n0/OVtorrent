@@ -27,6 +27,8 @@ import {
   THROTTLED_RATE_BPS,
   UNLIMITED_RATE,
 } from './windowPolicy';
+import { MAX_SUBTITLE_BYTES, toWebVtt, vttObjectUrl } from '../../subtitles/srtToVtt';
+import type { TrackOption } from '../types';
 
 export const NO_PEERS_MESSAGE =
   'Esta fuente no tiene peers compatibles con el transporte web disponible en este navegador.';
@@ -493,9 +495,55 @@ class WebTorrentSession implements StreamingSession {
   }
 
   async clearTemporaryData(): Promise<void> {
+    if (this.subtitleUrl) {
+      URL.revokeObjectURL(this.subtitleUrl);
+      this.subtitleUrl = null;
+      this.activeSubtitle = null;
+    }
     await this.dropTorrent();
     await this.bufferStore.clear();
     this.bytesInStore = 0;
+  }
+
+  private subtitleUrl: string | null = null;
+  private activeSubtitle: string | null = null;
+
+  /** .srt / .vtt files shipped inside the torrent, downloadable on demand (small files only). */
+  subtitleTracks(): TrackOption[] {
+    const torrent = this.torrent;
+    if (!torrent) return [];
+    return torrent.files
+      .map((f, index) => ({ f, index }))
+      .filter(({ f }) => /\.(srt|vtt)$/i.test(f.name) && f.length <= MAX_SUBTITLE_BYTES)
+      .map(({ f, index }) => ({
+        id: String(index),
+        label: f.name,
+        active: this.activeSubtitle === String(index),
+        detail: /\.srt$/i.test(f.name) ? 'SRT (convertido localmente a WebVTT)' : 'WebVTT',
+      }));
+  }
+
+  async selectSubtitleTrack(id: string | null): Promise<string | null> {
+    if (this.subtitleUrl) {
+      URL.revokeObjectURL(this.subtitleUrl);
+      this.subtitleUrl = null;
+    }
+    this.activeSubtitle = null;
+    if (id === null || !this.torrent) return null;
+    const file = this.torrent.files[Number(id)];
+    if (!file || typeof file.arrayBuffer !== 'function') return null;
+    file.select(2);
+    const text = new TextDecoder().decode(await file.arrayBuffer());
+    const converted = toWebVtt(text);
+    if (!converted) {
+      this.warn('subtitle', `No se pudo interpretar el archivo de subtítulos ${file.name}.`);
+      return null;
+    }
+    this.clearWarning('subtitle');
+    this.subtitleUrl = vttObjectUrl(converted.vtt);
+    this.activeSubtitle = id;
+    this.emit();
+    return this.subtitleUrl;
   }
 
   private availability(): number {

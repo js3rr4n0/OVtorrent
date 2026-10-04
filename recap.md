@@ -150,3 +150,72 @@ Fase 2: integración de WebTorrent para navegador, selección de archivo dentro 
 
 - **Fase 3**: importación M3U/M3U8, HLS multivariant, selección de calidad por variantes HLS, subtítulos SRT→VTT, audio multicanal, mejoras para TV boxes, compatibilidad ampliada.
 - **Fase 4**: optimización de memoria, Worker para parsing y métricas, exportación completa, diagnóstico ampliado, pruebas de compatibilidad, auditoría de seguridad y accesibilidad.
+
+---
+
+## 2026-10-04 — Fase 3 completada
+
+### Fase completada
+
+Fase 3: importación M3U/M3U8, HLS multivariant, selección de calidad, subtítulos, audio multicanal cuando el navegador lo soporte, mejoras para TV boxes y compatibilidad ampliada.
+
+### Archivos creados
+
+- `src/core/import/m3u.ts`: parser y importador M3U/M3U8 (listas de medios, HLS master y HLS de segmentos), con tests en `src/core/import/__tests__/m3u.test.ts`.
+- `src/core/subtitles/srtToVtt.ts`: detección SRT/VTT y conversión local a WebVTT con limpieza de etiquetas; tests en `src/core/subtitles/__tests__/srtToVtt.test.ts`.
+- `src/core/streaming/hls/`: `types.ts` (subconjunto estructural de hls.js), `loadHls.ts` (carga diferida), `qualityPolicy.ts` (niveles permitidos, tope automático, nivel inicial, configuración desde la ventana de búfer), `HlsStreamingEngine.ts` (motor nativo o hls.js con variantes, pistas de audio, subtítulos, reintentos), `index.ts`; tests en `__tests__/hls.test.ts`.
+- `src/test/fakes/FakeHls.ts`.
+- `src/features/import/M3uImport.tsx` (archivo, URL con confirmación y descarga única, texto pegado, URL base, creación de playlist).
+- `src/features/player/TrackSelectors.tsx` (calidad, pista de audio, subtítulos: engine + archivo local .srt/.vtt).
+
+### Archivos modificados
+
+- `package.json` (dependencia `hls.js`, Apache-2.0).
+- `src/core/streaming/types.ts`: `VariantOption`, `TrackOption` y métodos opcionales `variants/selectVariant`, `audioTracks/selectAudioTrack`, `subtitleTracks/selectSubtitleTrack` en `StreamingSession`.
+- `src/core/streaming/capabilities.ts`: `hasNativeHls`, `hasMseForHls`, `hasAudioTracksApi`.
+- `src/core/streaming/registry.ts`: `hls` → `HlsStreamingEngine`; `m3u` explicado como lista importable.
+- `src/core/streaming/HtmlMediaEngine.ts`: pistas de audio mediante `AudioTrackList` (helpers reutilizados por HLS nativo).
+- `src/core/streaming/webtorrent/WebTorrentStreamingEngine.ts` y `types.ts`: subtítulos .srt/.vtt dentro del torrent (`file.arrayBuffer`, conversión local, object URL liberada al limpiar); fake actualizado.
+- `src/core/schemas/settings.ts`: `tv.simplifiedPlayer` y `tv.autoFocusPlayer` (opcionales con valor por defecto).
+- `src/features/player/PlayerControls.tsx` (modo simplificado con «Más», foco configurable), `PlayerPage.tsx` (selectores de pistas, panel TV), `src/features/settings/TvSettingsPage.tsx`, `src/features/import/ImportPage.tsx` (pestaña M3U / M3U8), `UrlImport.tsx` (las URL `.m3u8` se añaden como fuente HLS), `src/features/diagnostics/DiagnosticsPage.tsx` (HLS nativo, hls.js, AudioTrackList y limitaciones asociadas).
+- `e2e/app.spec.ts`: importación M3U, subtítulos SRT locales, panel TV simplificado.
+- Documentación: README, ARCHITECTURE, STREAMING-LIMITATIONS, SECURITY, LICENSES, TESTING, BROWSER-COMPATIBILITY, ACCESSIBILITY, TV-COMPATIBILITY, LOCAL-STORAGE, PRIVACY, PLAYLIST-SCHEMA.
+
+### Funcionalidades implementadas
+
+- Importación M3U/M3U8 por archivo, URL (descarga única con confirmación) o texto pegado: listas de medios → elementos `url`/`hls`/`magnet` validados con errores por línea, límite de 500 y confirmación a partir de 50; playlists HLS → una fuente `hls` con las variantes declaradas en la descripción. Opción de crear playlist además de añadir a la biblioteca.
+- Reproducción HLS: nativa cuando el navegador la ofrece; en caso contrario hls.js (carga diferida) sobre MediaSource/ManagedMediaSource con la ventana de búfer aplicada (`maxBufferLength`, `backBufferLength`), tope automático y nivel inicial según los ajustes de calidad (resolución preferida, presets, bitrate máximo/mínimo, prioridad), recuperación de errores de red y de decodificación con mensajes claros.
+- Selección de calidad: variantes HLS declaradas («Auto» + niveles) o, en su defecto, versiones del mismo título en la playlist. Nunca se transcodifica.
+- Subtítulos: archivo local `.srt` (convertido a WebVTT en el navegador) o `.vtt`; archivos `.srt`/`.vtt` incluidos en el torrent; pistas declaradas en HLS.
+- Pistas de audio: declaradas en HLS (hls.js) o expuestas por `AudioTrackList` en archivos/URLs cuando el navegador lo soporta; el audio multicanal depende de los codecs del dispositivo y se indica así.
+- Modo TV: panel de reproducción simplificado con «Más», foco automático en reproducir (configurables), diagnóstico ampliado (HLS nativo, hls.js, pistas de audio).
+
+### Decisiones arquitectónicas
+
+- API opcional de pistas/variantes en `StreamingSession` para que cada motor exponga solo lo que existe; el reproductor no inventa opciones.
+- HLS nativo primero y hls.js solo bajo demanda para no cargar ~190 KB gzip en Safari/TV con soporte nativo.
+- Las listas M3U se convierten en elementos individuales (no existe un «motor M3U»); las playlists HLS requieren URL porque no pueden reproducirse desde texto pegado.
+- Conversión SRT → WebVTT propia (sin dependencia) con lista blanca de etiquetas.
+
+### Limitaciones conocidas
+
+- Con HLS nativo la variante la elige el navegador; los ajustes de calidad solo informan.
+- HLS requiere CORS en el servidor y no soporta DRM.
+- `AudioTrackList` solo existe en Safari (y Chromium con flags); en otros navegadores las pistas alternativas solo funcionan en HLS.
+- No hay e2e de reproducción HLS real (no se dispone de un codificador para generar segmentos en el entorno); el motor se prueba con un hls.js falso.
+- Carpetas locales (File System Access API) siguen pendientes.
+
+### Pruebas ejecutadas
+
+- `npm run lint`, `npm run typecheck`: sin errores.
+- `npm run test`: 16 archivos, 101 tests, todos pasan.
+- `npm run build`: hls.js como chunk diferido independiente.
+- `npm run test:e2e`: 12 escenarios Playwright (9 anteriores + M3U, subtítulos SRT y panel TV).
+
+### Comandos utilizados
+
+`npm install hls.js`, `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run test:e2e`.
+
+### Tareas pendientes
+
+- **Fase 4**: optimización de memoria, Worker para parsing y métricas, exportación completa de configuración, diagnóstico ampliado, pruebas de compatibilidad, auditoría de seguridad y accesibilidad, carpetas locales con File System Access API.

@@ -7,12 +7,14 @@ import { TorrentFileImport } from './TorrentFileImport';
 import { LocalFileImport } from './LocalFileImport';
 import { UrlImport } from './UrlImport';
 import { JsonPlaylistImport } from './JsonPlaylistImport';
+import { M3uImport } from './M3uImport';
 
 const TABS = [
   { id: 'magnet', label: 'Magnet link' },
   { id: 'torrent', label: 'Archivo .torrent' },
   { id: 'file', label: 'Archivo local' },
   { id: 'url', label: 'URL multimedia' },
+  { id: 'm3u', label: 'M3U / M3U8' },
   { id: 'json', label: 'Playlist JSON' },
 ] as const;
 type Tab = (typeof TABS)[number]['id'];
@@ -70,12 +72,13 @@ export function ImportPage() {
         {tab === 'torrent' ? <TorrentFileImport onImported={onImported} /> : null}
         {tab === 'file' ? <LocalFileImport onImported={onImported} /> : null}
         {tab === 'url' ? <UrlImport onImported={onImported} /> : null}
+        {tab === 'm3u' ? <M3uImport onImported={onImported} /> : null}
         {tab === 'json' ? <JsonPlaylistImport onImported={onImported} /> : null}
       </div>
       <div className="mt-6">
-        <Notice kind="info" title="Formatos previstos en fases posteriores">
-          Listas M3U/M3U8, fuentes HLS multivariant y carpetas locales (File System Access API)
-          llegarán en la Fase 3. No se simula su soporte.
+        <Notice kind="info" title="Carpetas locales">
+          La importación de carpetas completas mediante File System Access API se añadirá cuando se
+          amplíe la compatibilidad; mientras tanto puedes seleccionar varios archivos a la vez.
         </Notice>
       </div>
     </div>

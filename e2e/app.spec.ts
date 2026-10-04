@@ -112,3 +112,66 @@ test.describe('OVtorrent static PWA', () => {
     await expect(page.getByText('MP4 H.264/AAC')).toBeVisible();
   });
 });
+
+test.describe('Fase 3', () => {
+  test('imports an M3U list as library items and a playlist', async ({ page }) => {
+    await page.goto('/#/import');
+    await page.getByRole('tab', { name: 'M3U / M3U8' }).click();
+    await page
+      .getByLabel('O pega el contenido')
+      .fill(
+        '#EXTM3U\n#EXTINF:10,Vídeo uno\nhttps://example.org/uno.mp4\n#EXTINF:-1,Canal HLS\nhttps://example.org/live/index.m3u8\n',
+      );
+    await page.getByLabel('Nombre de la playlist').fill('Lista M3U e2e');
+    await page.getByRole('button', { name: 'Validar' }).click();
+    await expect(page.getByText(/Lista de medios: 2 elemento/)).toBeVisible();
+    await page.getByRole('button', { name: /Importar 2 elemento/ }).click();
+    await expect(page.getByRole('heading', { name: 'Lista M3U e2e' })).toBeVisible();
+    await expect(page.getByText('Canal HLS')).toBeVisible();
+    await expect(page.getByText('HLS', { exact: true })).toBeVisible();
+  });
+
+  test('loads local SRT subtitles converted to WebVTT in the player', async ({ page }) => {
+    await page.goto('/#/import');
+    await page.getByRole('tab', { name: 'URL multimedia' }).click();
+    await page.getByLabel('URL de archivo multimedia').fill('https://example.org/pelicula.mp4');
+    await page.getByRole('button', { name: 'Añadir a la biblioteca' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Añadir' }).click();
+    await page.goto('/#/');
+    await page.getByRole('link', { name: 'Reproducir' }).first().click();
+    await page.getByLabel('Cargar subtítulos locales (.srt o .vtt)').setInputFiles({
+      name: 'subs.srt',
+      mimeType: 'application/x-subrip',
+      buffer: Buffer.from(
+        '1\n00:00:01,000 --> 00:00:03,000\nHola\n\n2\n00:00:04,000 --> 00:00:05,000\nAdiós\n',
+      ),
+    });
+    await expect(page.getByLabel('Subtítulos', { exact: true })).toHaveValue('local');
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.querySelector('video track')?.getAttribute('src') ?? ''),
+      )
+      .toMatch(/^blob:/);
+    await expect(page.locator('#subtitle-track option[value="local"]')).toHaveText(
+      /subs\.srt \(2 líneas\)/,
+    );
+  });
+
+  test('TV mode shows the simplified player panel with a "Más" toggle', async ({ page }) => {
+    await page.goto('/#/settings/tv');
+    await page.getByLabel('Activación').selectOption('on');
+    await page.goto('/#/import');
+    await page.getByRole('tab', { name: 'URL multimedia' }).click();
+    await page.getByLabel('URL de archivo multimedia').fill('https://example.org/tv.mp4');
+    await page.getByRole('button', { name: 'Añadir a la biblioteca' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Añadir' }).click();
+    await page.goto('/#/');
+    await page.getByRole('link', { name: 'Reproducir' }).first().click();
+    await expect(page.getByRole('button', { name: 'Retroceder 10 segundos' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retroceder 30 segundos' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Pausar|Reproducir/ })).toBeFocused();
+    await page.getByRole('button', { name: 'Más' }).click();
+    await expect(page.getByRole('button', { name: 'Retroceder 30 segundos' })).toBeVisible();
+    await expect(page.getByLabel('Velocidad', { exact: true })).toBeVisible();
+  });
+});

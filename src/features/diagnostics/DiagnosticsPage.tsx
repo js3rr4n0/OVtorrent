@@ -6,7 +6,10 @@ import { formatBytes } from '@/components/format';
 import { detectCodecSupport } from '@/core/media/compat';
 import {
   deviceMemoryGb,
+  hasAudioTracksApi,
   hasFileSystemAccess,
+  hasMseForHls,
+  hasNativeHls,
   hasFullscreen,
   hasIndexedDb,
   hasManagedMediaSource,
@@ -60,6 +63,13 @@ export function DiagnosticsPage() {
       { label: 'WebRTC DataChannel', ok: hasRTCDataChannel(), critical: true },
       { label: 'MediaSource Extensions', ok: hasMediaSource(), critical: true },
       { label: 'ManagedMediaSource (iOS 17+)', ok: hasManagedMediaSource(), critical: false },
+      { label: 'HLS nativo (<video> con .m3u8)', ok: hasNativeHls(), critical: false },
+      { label: 'HLS mediante hls.js (MediaSource)', ok: hasMseForHls(), critical: false },
+      {
+        label: 'Pistas de audio alternativas (AudioTrackList)',
+        ok: hasAudioTracksApi(),
+        critical: false,
+      },
       { label: 'IndexedDB', ok: hasIndexedDb(), critical: false },
       { label: 'localStorage', ok: isLocalStorageAvailable(), critical: false },
       { label: 'Service Worker', ok: hasServiceWorker(), critical: false },
@@ -82,6 +92,12 @@ export function DiagnosticsPage() {
     if (!hasMediaSource())
       limitations.push(
         'Sin MediaSource Extensions solo es posible la reproducción progresiva de archivos completos.',
+      );
+    if (!hasNativeHls() && !hasMseForHls())
+      limitations.push('HLS no disponible: ni soporte nativo ni MediaSource para hls.js.');
+    if (!hasAudioTracksApi())
+      limitations.push(
+        'El navegador no expone pistas de audio alternativas en archivos locales/URLs; en HLS las gestiona hls.js.',
       );
     if (!hasServiceWorker())
       limitations.push(

@@ -68,6 +68,12 @@ export class FakeFile implements WtFile {
     this.selected = false;
     this.torrent.calls.push(`deselect:${this.name}`);
   }
+  content: Uint8Array | null = null;
+  async arrayBuffer(): Promise<ArrayBuffer> {
+    this.torrent.calls.push(`arrayBuffer:${this.name}`);
+    const bytes = this.content ?? new Uint8Array(this.length);
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  }
 }
 
 export class FakeTorrent extends Emitter implements WtTorrent {

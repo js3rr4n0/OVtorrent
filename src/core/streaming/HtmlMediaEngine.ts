@@ -10,6 +10,7 @@ import type {
   StreamingMetrics,
   StreamingSession,
   StreamingSource,
+  TrackOption,
 } from './types';
 import { StreamingUnavailableError } from './types';
 
@@ -191,6 +192,15 @@ class HtmlMediaSession implements StreamingSession {
     this.video = null;
   }
 
+  audioTracks(): TrackOption[] {
+    return readAudioTracks(this.video);
+  }
+
+  async selectAudioTrack(id: string): Promise<void> {
+    selectAudioTrack(this.video, id);
+    this.emit();
+  }
+
   async clearTemporaryData(): Promise<void> {
     if (this.objectUrl) {
       URL.revokeObjectURL(this.objectUrl);
@@ -236,4 +246,33 @@ export function describeMediaError(error: MediaError | null): string {
     default:
       return 'Error de reproducción.';
   }
+}
+
+interface AudioTrackLike {
+  id: string;
+  label: string;
+  language: string;
+  enabled: boolean;
+}
+
+/** Reads the AudioTrackList API when the browser exposes it (Safari, Chromium with flags). */
+export function readAudioTracks(video: HTMLVideoElement | null): TrackOption[] {
+  const list = (video as unknown as { audioTracks?: ArrayLike<AudioTrackLike> } | null)
+    ?.audioTracks;
+  if (!list || list.length <= 1) return [];
+  return Array.from(list, (t, i) => ({
+    id: t.id || String(i),
+    label: t.label || t.language || `Pista ${i + 1}`,
+    lang: t.language || undefined,
+    active: t.enabled,
+  }));
+}
+
+export function selectAudioTrack(video: HTMLVideoElement | null, id: string): void {
+  const list = (video as unknown as { audioTracks?: ArrayLike<AudioTrackLike> } | null)
+    ?.audioTracks;
+  if (!list) return;
+  Array.from(list).forEach((t, i) => {
+    t.enabled = (t.id || String(i)) === id;
+  });
 }

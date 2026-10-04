@@ -19,6 +19,8 @@ export interface WtFile {
   readonly streamURL: string;
   select(priority?: number): void;
   deselect(): void;
+  /** Downloads the whole file (used only for small subtitle files). */
+  arrayBuffer?(): Promise<ArrayBuffer>;
 }
 
 export interface WtTorrent {

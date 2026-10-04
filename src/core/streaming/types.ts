@@ -58,6 +58,25 @@ export interface StreamingMetrics {
 export type SessionState =
   'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'stopped' | 'error';
 
+/** A selectable rendition declared by the source (HLS variant). */
+export interface VariantOption {
+  id: string;
+  label: string;
+  height?: number;
+  bitrateKbps?: number;
+  codecs?: string;
+  active: boolean;
+}
+
+/** A selectable audio or subtitle track exposed by the engine. */
+export interface TrackOption {
+  id: string;
+  label: string;
+  lang?: string;
+  active: boolean;
+  detail?: string;
+}
+
 export interface StreamingSession {
   readonly id: string;
   readonly engine: string;
@@ -72,6 +91,20 @@ export interface StreamingSession {
   clearTemporaryData(): Promise<void>;
   /** Subscribe to state/metric changes. Returns an unsubscribe function. */
   subscribe(listener: (session: StreamingSession) => void): () => void;
+  /** Declared renditions (HLS multivariant). `auto` is included when the engine can adapt. Absent when the source has none. */
+  variants?(): VariantOption[];
+  selectVariant?(id: string): Promise<void>;
+  /** Alternative audio tracks when the browser or the engine exposes them. */
+  audioTracks?(): TrackOption[];
+  selectAudioTrack?(id: string): Promise<void>;
+  /** Subtitle tracks provided by the source (HLS tracks, .srt/.vtt inside a torrent). */
+  subtitleTracks?(): TrackOption[];
+  /**
+   * Selects a subtitle track. Resolves to a WebVTT URL the player must attach
+   * as a <track>, or null when the engine renders the track itself or the
+   * selection was cleared.
+   */
+  selectSubtitleTrack?(id: string | null): Promise<string | null>;
 }
 
 export interface StreamingEngine {

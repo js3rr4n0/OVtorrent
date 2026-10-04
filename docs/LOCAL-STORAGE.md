@@ -4,16 +4,18 @@ OVtorrent usa **exclusivamente** almacenamiento local del navegador. No existe b
 
 ## Dónde se guarda cada cosa
 
-| Dato                                                        | Mecanismo               | Clave / nombre                             |
-| ----------------------------------------------------------- | ----------------------- | ------------------------------------------ |
-| Ajustes (tema, reproductor, calidad, búfer, TV, privacidad) | `localStorage`          | `ovtorrent:settings`                       |
-| Biblioteca                                                  | `localStorage`          | `ovtorrent:library`                        |
-| Favoritos                                                   | `localStorage`          | `ovtorrent:favorites`                      |
-| Playlists                                                   | `localStorage`          | `ovtorrent:playlists`                      |
-| Historial / progreso                                        | `localStorage`          | `ovtorrent:history`                        |
-| Búfer efímero (opcional)                                    | IndexedDB               | base `ovtorrent-ephemeral`, store `chunks` |
-| App shell de la PWA                                         | Cache Storage (Workbox) | `workbox-precache-*`                       |
-| Archivos locales seleccionados, cola de reproducción        | Memoria (Zustand)       | — (se pierden al cerrar la pestaña)        |
+| Dato                                                          | Mecanismo                 | Clave / nombre                                                                  |
+| ------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------- |
+| Ajustes (tema, reproductor, calidad, búfer, TV, privacidad)   | `localStorage`            | `ovtorrent:settings`                                                            |
+| Biblioteca                                                    | `localStorage`            | `ovtorrent:library`                                                             |
+| Favoritos                                                     | `localStorage`            | `ovtorrent:favorites`                                                           |
+| Playlists                                                     | `localStorage`            | `ovtorrent:playlists`                                                           |
+| Historial / progreso                                          | `localStorage`            | `ovtorrent:history`                                                             |
+| Búfer efímero (opcional)                                      | IndexedDB                 | base `ovtorrent-ephemeral`, store `chunks`                                      |
+| App shell de la PWA                                           | Cache Storage (Workbox)   | `workbox-precache-*`                                                            |
+| Archivos locales seleccionados, cola de reproducción          | Memoria (Zustand)         | — (se pierden al cerrar la pestaña)                                             |
+| Subtítulos convertidos (SRT → WebVTT), subtítulos del torrent | Memoria (object URLs)     | — (se revocan al cambiar de pista o de elemento)                                |
+| Búfer HLS (hls.js)                                            | MediaSource del `<video>` | — (`maxBufferLength`/`backBufferLength` según la ventana; se libera al detener) |
 
 Todo lo guardado se valida con Zod al leer. Si está corrupto o es de una versión incompatible, se descarta y se usan valores por defecto.
 

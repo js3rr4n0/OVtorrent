@@ -1,6 +1,13 @@
 import type { MediaItem } from '../schemas/media';
 import type { Settings } from '../schemas/settings';
-import { hasRTCDataChannel, hasServiceWorker, hasWebRTC } from './capabilities';
+import {
+  hasMseForHls,
+  hasNativeHls,
+  hasRTCDataChannel,
+  hasServiceWorker,
+  hasWebRTC,
+} from './capabilities';
+import { HlsStreamingEngine } from './hls/HlsStreamingEngine';
 import { HtmlMediaEngine } from './HtmlMediaEngine';
 import type { StreamingEngine } from './types';
 import { WebTorrentStreamingEngine } from './webtorrent/WebTorrentStreamingEngine';
@@ -54,11 +61,23 @@ export function resolveEngine(
       if (reasons.length > 0) return { engine: null, reasons };
       return { engine: new WebTorrentStreamingEngine({ getSettings }), reasons: [] };
     }
-    case 'hls':
+    case 'hls': {
+      if (!hasNativeHls() && !hasMseForHls()) {
+        return {
+          engine: null,
+          reasons: [
+            'Este navegador no reproduce HLS de forma nativa ni expone MediaSource Extensions, necesarias para hls.js.',
+          ],
+        };
+      }
+      return { engine: new HlsStreamingEngine({ getSettings }), reasons: [] };
+    }
     case 'm3u':
       return {
         engine: null,
-        reasons: ['La importación M3U/M3U8 y HLS multivariant se añaden en la Fase 3.'],
+        reasons: [
+          'Las listas M3U se importan como playlists; sus elementos se reproducen individualmente.',
+        ],
       };
     default:
       return { engine: null, reasons: ['Tipo de fuente no soportado.'] };

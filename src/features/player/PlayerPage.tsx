@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
-import { Button, EmptyState, Field, Input, Notice, Select } from '@/components/ui';
+import { Button, EmptyState, Field, Notice, Select } from '@/components/ui';
 import { formatBytes, formatTime } from '@/components/format';
 import { hasFullscreen, hasPictureInPicture } from '@/core/streaming/capabilities';
 import type { MediaItem } from '@/core/schemas/media';
@@ -12,6 +12,7 @@ import { useSessionStore } from '@/state/sessionStore';
 import { useSettingsStore } from '@/state/settingsStore';
 import { PlayerControls, type RepeatMode } from './PlayerControls';
 import { PlayerIndicators } from './PlayerIndicators';
+import { TrackSelectors } from './TrackSelectors';
 import { usePlaybackSession } from './usePlaybackSession';
 
 export function PlayerPage() {
@@ -176,14 +177,6 @@ export function PlayerPage() {
     };
   }, [playback.bufferStore]);
 
-  // Subtitle object URL cleanup.
-  useEffect(
-    () => () => {
-      if (subtitleUrl) URL.revokeObjectURL(subtitleUrl);
-    },
-    [subtitleUrl],
-  );
-
   // Keyboard shortcuts on the player container (space, arrows handled by TV mode).
   const onKey = (e: React.KeyboardEvent) => {
     const tag = (e.target as HTMLElement).tagName;
@@ -245,8 +238,8 @@ export function PlayerPage() {
   }
 
   const needsFile = item.sourceType === 'file' && playback.state === 'unavailable';
-  const hideDiagnostics =
-    settings.tv.hideDiagnostics && document.documentElement.classList.contains('tv-mode');
+  const tvActive = document.documentElement.classList.contains('tv-mode');
+  const hideDiagnostics = settings.tv.hideDiagnostics && tvActive;
 
   return (
     <div ref={containerRef} onKeyDown={onKey} className="flex flex-col gap-3 bg-[var(--ovt-bg)]">
@@ -354,73 +347,41 @@ export function PlayerPage() {
         onPrev={prev}
         onFullscreen={() => void fullscreen()}
         onPip={() => void pip()}
+        simplified={tvActive && settings.tv.simplifiedPlayer}
+        autoFocusPlay={!tvActive || settings.tv.autoFocusPlayer}
       />
 
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="ovt-surface rounded-lg p-3">
+        <div className="flex flex-col gap-3">
           {playback.metadata && playback.metadata.files.length > 1 ? (
-            <Field
-              label="Archivo dentro del torrent"
-              htmlFor="torrent-file"
-              hint="Solo se descargan piezas del archivo elegido. Los contenedores marcados como no reproducibles pueden fallar en este navegador."
-            >
-              <Select
-                id="torrent-file"
-                value={fileIndex ?? playback.metadata.selectedFileIndex}
-                onChange={(e) => setFileIndex(Number(e.target.value))}
+            <div className="ovt-surface rounded-lg p-3">
+              <Field
+                label="Archivo dentro del torrent"
+                htmlFor="torrent-file"
+                hint="Solo se descargan piezas del archivo elegido. Los contenedores marcados como no reproducibles pueden fallar en este navegador."
               >
-                {playback.metadata.files.map((f) => (
-                  <option key={f.index} value={f.index}>
-                    {f.name} · {formatBytes(f.length)}
-                    {f.isPlayable ? '' : ' · probablemente no reproducible'}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+                <Select
+                  id="torrent-file"
+                  value={fileIndex ?? playback.metadata.selectedFileIndex}
+                  onChange={(e) => setFileIndex(Number(e.target.value))}
+                >
+                  {playback.metadata.files.map((f) => (
+                    <option key={f.index} value={f.index}>
+                      {f.name} · {formatBytes(f.length)}
+                      {f.isPlayable ? '' : ' · probablemente no reproducible'}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
           ) : null}
-          <Field
-            label="Subtítulos (archivo .vtt local)"
-            htmlFor="subs"
-            hint="Solo WebVTT en esta fase. La conversión local de SRT llega en la Fase 3."
-          >
-            <Input
-              id="subs"
-              type="file"
-              accept=".vtt,text/vtt"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) setSubtitleUrl(URL.createObjectURL(f));
-              }}
-            />
-          </Field>
-          <Field
-            label="Pista de audio"
-            htmlFor="audio-track"
-            hint="Solo cuando el navegador expone pistas alternativas (AudioTrackList). La mayoría no lo hace."
-          >
-            <Select id="audio-track" disabled>
-              <option>Predeterminada</option>
-            </Select>
-          </Field>
-          <Field
-            label="Calidad"
-            htmlFor="quality"
-            hint="Solo puede elegir entre versiones existentes en la playlist con el mismo título. Un archivo único no se transcodifica."
-          >
-            <Select
-              id="quality"
-              value={item.id}
-              disabled={variants.length === 0}
-              onChange={(e) => goTo(items.find((i) => i.id === e.target.value))}
-            >
-              <option value={item.id}>{item.qualityLabel ?? 'Original'}</option>
-              {variants.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.qualityLabel}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <TrackSelectors
+            session={playback.session}
+            playlistVariants={variants}
+            currentItem={item}
+            onPlaylistVariant={(target) => goTo(target)}
+            onSubtitleUrl={setSubtitleUrl}
+          />
         </div>
         {!hideDiagnostics ? (
           <PlayerIndicators

@@ -13,6 +13,7 @@ OVtorrent se publica bajo licencia **MIT** (ver `LICENSE`). Todas las dependenci
 | workbox-* (vía vite-plugin-pwa)                                    | MIT                                                                 | Service Worker / precache del app shell                                                                                                 |
 | webtorrent (bundle `dist/webtorrent.min.js`, cargado bajo demanda) | MIT                                                                 | Motor P2P en navegador (WebRTC + trackers WebSocket); incluye bittorrent-tracker, bittorrent-protocol, parse-torrent y otras, todas MIT |
 | `public/webtorrent-sw.js`                                          | MIT (reimplementación del protocolo de `webtorrent/dist/sw.min.js`) | Handler de streaming en el Service Worker                                                                                               |
+| hls.js (chunk diferido, solo sin HLS nativo)                       | Apache-2.0                                                          | HLS multivariant sobre MediaSource Extensions, pistas de audio y subtítulos                                                             |
 
 ## Dependencias de desarrollo
 

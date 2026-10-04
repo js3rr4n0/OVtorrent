@@ -16,11 +16,12 @@ export function UrlImport({ onImported }: { onImported: (msg: string, to?: strin
   const [pending, setPending] = useState<URL | null>(null);
 
   const commit = (u: URL) => {
+    const isHls = /\.m3u8?(\?|#|$)/i.test(u.pathname + u.search);
     const item = createMediaItem({
-      sourceType: 'url',
+      sourceType: isHls ? 'hls' : 'url',
       source: u.toString(),
       title: sanitizeText(title, MAX_TITLE_LENGTH) || u.pathname.split('/').pop() || u.hostname,
-      tags: [],
+      tags: isHls ? ['hls'] : [],
     });
     if (add(item)) {
       setUrl('');
@@ -46,7 +47,7 @@ export function UrlImport({ onImported }: { onImported: (msg: string, to?: strin
       <Field
         label="URL de archivo multimedia"
         htmlFor="url-input"
-        hint="Solo http:// y https://. Se bloquean javascript:, data: y otros esquemas."
+        hint="Solo http:// y https://. Las URLs .m3u8 se añaden como fuente HLS (nativo o hls.js). Se bloquean javascript:, data: y otros esquemas."
         error={error ?? undefined}
       >
         <Input

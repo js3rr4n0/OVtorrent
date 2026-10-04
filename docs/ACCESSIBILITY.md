@@ -30,7 +30,11 @@
 
 ## Subtítulos
 
-El reproductor admite subtítulos WebVTT locales mediante `<track>`. SRT se convertirá localmente en la Fase 3.
+El reproductor admite subtítulos locales `.vtt` y `.srt` (convertidos a WebVTT en el navegador) mediante `<track>`, subtítulos incluidos en el torrent y pistas declaradas por playlists HLS (renderizadas por hls.js).
+
+## Modo TV simplificado
+
+Con el modo TV activo el panel de reproducción muestra solo los controles esenciales (play/pausa, ±10 s, anterior/siguiente, detener, pantalla completa) y el resto tras un botón «Más» con `aria-expanded`. El foco inicial va al botón de reproducir (configurable en Ajustes → Modo TV).
 
 ## Pendiente (Fase 4: auditoría de accesibilidad)
 

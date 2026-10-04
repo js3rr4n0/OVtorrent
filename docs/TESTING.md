@@ -9,6 +9,7 @@
 - `FakeMediaAdapter`: simula un elemento multimedia (tiempo, duración, `canPlayType`).
 - `FakeStorageAdapter`: adapter en memoria que puede simular fallos de escritura (cuota).
 - `FakeWebTorrentClient` / `FakeTorrent`: implementan los tipos estructurales de `streaming/webtorrent/types.ts` (add, select/deselect, critical, throttle, servidor, peers con bitfield, recepción de piezas en el store inyectado, destrucción).
+- `createFakeHls` / `FakeHlsInstance`: implementan el subconjunto estructural de hls.js (configuración, eventos, niveles, pistas, errores).
 
 `fake-indexeddb` sustituye IndexedDB en jsdom para probar `IndexedDbBufferStore`.
 
@@ -33,6 +34,9 @@ Cobertura actual (`src/**/__tests__`):
 | Streaming               | ausencia de WebRTC/MediaSource, resolución de motor, errores de peer y codec con fakes, motor HTML5 (object URLs, stop libera recursos)                                                                                                                                                                                                                                        |
 | WebTorrent              | capacidades, rechazo de fuentes no P2P, metadatos y archivo por defecto, selección del archivo elegido y piezas críticas, índice explícito y subida desactivable, aviso de falta de peers con reloj simulado, throttling al llenar la ventana y liberación tras seek, reinicio por límite de memoria, disponibilidad y métricas, timeout de metadatos, store efímero inyectado |
 | Política de ventana     | archivo por defecto, rangos de piezas, ventana/críticas/expiradas/throttle, validación de trackers                                                                                                                                                                                                                                                                             |
+| M3U/M3U8                | listas de medios con títulos, duraciones, magnets y rutas relativas; detección de HLS master/segmentos; tipos de fuente; rechazo de esquemas peligrosos; límites y confirmación; HLS requiere URL                                                                                                                                                                              |
+| Subtítulos              | detección SRT/VTT, conversión con normalización de tiempos y limpieza de etiquetas, cues vacíos, paso directo de WebVTT                                                                                                                                                                                                                                                        |
+| HLS                     | política de calidad (resolución, preset, bitrate, tope automático, nivel inicial, configuración), motor sobre hls.js (adjuntar, límites al parsear el manifest, variantes/audio/subtítulos, métricas, reintentos de red y recuperación de media, mensaje final), ausencia de MSE, ruta nativa sin cargar hls.js                                                                |
 | Limpieza                | razones, ciclo de vida (`pagehide`, `beforeunload`, `hidden`), aislamiento de fallos                                                                                                                                                                                                                                                                                           |
 | TV                      | detección por user agent, navegación espacial, teclas de retroceso                                                                                                                                                                                                                                                                                                             |
 | Pantallas               | biblioteca, importación de magnet y JSON, playlists, ajustes de calidad/búfer, almacenamiento (restablecimiento), reproductor (magnet sin motor, archivo sin seleccionar, URL con controles), diagnóstico, navegación por teclado/D-pad                                                                                                                                        |
@@ -46,7 +50,7 @@ npm run test:e2e
 
 `playwright.config.ts` levanta `npm run preview` y ejecuta en Chromium:
 
-- `e2e/app.spec.ts`: carga con hash routing y sin peticiones a terceros, recarga en rutas profundas, importación y persistencia de magnet con arranque del motor WebTorrent, creación y exportación de playlist, navegación D-pad en modo TV, borrado total de datos, funcionamiento offline de la interfaz y pantalla de diagnóstico.
+- `e2e/app.spec.ts`: carga con hash routing y sin peticiones a terceros, recarga en rutas profundas, importación y persistencia de magnet con arranque del motor WebTorrent, creación y exportación de playlist, navegación D-pad en modo TV, borrado total de datos, funcionamiento offline de la interfaz, pantalla de diagnóstico, importación M3U como biblioteca y playlist, subtítulos SRT locales convertidos a WebVTT en el reproductor y panel simplificado en modo TV.
 - `e2e/p2p.spec.ts`: **streaming P2P real** sin red ni torrents públicos. El test arranca un tracker WebSocket local (`bittorrent-tracker/server`), un segundo contexto de navegador graba un clip VP8 con `MediaRecorder` y lo siembra con el bundle de WebTorrent, y la aplicación importa el magnet (solo con el tracker local), conecta por WebRTC, recibe el stream a través del Service Worker (respuesta 206 con rangos), reproduce más de un segundo, muestra 1 peer y libera el `<video>` al detener.
 
 Si Playwright no encuentra su Chromium, define `PLAYWRIGHT_CHROMIUM_PATH` con la ruta a un ejecutable de Chromium.
@@ -61,5 +65,4 @@ npm run format:check
 
 ## Pendiente por fase
 
-- Fase 3: parsers M3U/M3U8, HLS multivariant, conversión SRT→VTT.
 - Fase 4: pruebas de compatibilidad, auditoría de seguridad y accesibilidad.

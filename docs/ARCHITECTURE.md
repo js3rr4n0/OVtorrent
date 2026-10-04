@@ -27,7 +27,8 @@ Navegador
   |     +-- Stream HTTP con rangos servido por el Service Worker (P2P): el <video>
   |         pide /webtorrent/<infoHash>/<archivo> y el worker lo responde con las
   |         piezas que el cliente WebTorrent de la pestaña le entrega por MessageChannel
-  |     +-- MediaSource Extensions (Fase 3, HLS)
+  |     +-- HLS: nativo (<video src=.m3u8>) o hls.js sobre MediaSource Extensions
+  |         (variantes, pistas de audio y subtítulos declaradas por la playlist)
   |
   +-- Búfer temporal (src/core/buffer)
   |     +-- EphemeralBufferStore: NoPersistence (defecto) | Memory | IndexedDb
@@ -58,6 +59,8 @@ Sin React. Todo es testeable con Vitest sin DOM salvo donde se indica.
 | `buffer/`               | Contrato `EphemeralBufferStore` y sus tres implementaciones; política de ventanas.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `streaming/`            | Contratos `StreamingEngine`, `StreamingSession`, `StreamingMetrics`; detección de capacidades; `HtmlMediaEngine`; `resolveEngine()` que decide qué motor sirve cada tipo de fuente y explica por qué no hay motor.                                                                                                                                                                                                                                                                                                             |
 | `streaming/webtorrent/` | `WebTorrentStreamingEngine` (sesión P2P), `windowPolicy` (cálculo puro de ventana, piezas críticas, throttling, piezas expiradas, archivo por defecto), `EphemeralChunkStore` (adaptador abstract-chunk-store → `EphemeralBufferStore`), `trackers` (lista pública por defecto y validación), `loadWebTorrent` (carga diferida del bundle, cliente compartido, registro del Service Worker de streaming), `types` (tipos estructurales del subconjunto de API usado, implementados también por el cliente falso de los tests). |
+| `streaming/hls/`        | `HlsStreamingEngine` (HLS nativo o hls.js), `qualityPolicy` (niveles permitidos por resolución/bitrate/preset, tope automático, nivel inicial, configuración de hls.js a partir de la ventana de búfer), `loadHls` (carga diferida), `types` (subconjunto estructural de hls.js).                                                                                                                                                                                                                                              |
+| `subtitles/`            | Detección SRT/VTT, conversión SRT → WebVTT en el navegador (solo `<i>`, `<b>`, `<u>`, `<v>`), object URLs.                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `import/`               | Parsers seguros: magnet (btih hex/base32), `.torrent` (bencode propio, hash SHA-1 con WebCrypto), playlist JSON.                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `security/`             | Sanitización de texto y validación de esquemas URL.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `media/`                | Detección de codecs con `canPlayType`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -136,6 +139,19 @@ El modo predeterminado del búfer es `NoPersistenceBufferStore`: la aplicación 
 
 Métricas: peers (`torrent.numPeers`), velocidad de descarga y subida, disponibilidad (muestreo de hasta 500 piezas del archivo frente a los bitfields de los peers, cacheado 5 s), segundos almacenados por el navegador, bytes en el store, bitrate aproximado (tamaño del archivo / duración), resolución del `<video>`, avisos (sin peers tras el tiempo configurado, errores del protocolo, autoplay bloqueado, reinicios por memoria).
 
+## Pistas y variantes
+
+`StreamingSession` expone de forma opcional `variants()/selectVariant()`, `audioTracks()/selectAudioTrack()` y `subtitleTracks()/selectSubtitleTrack()`. Cada motor rellena solo lo que existe de verdad:
+
+| Motor                  | Variantes                                                                                                            | Audio                                      | Subtítulos                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------- |
+| HTML5 (archivos, URLs) | ninguna (fallback: elementos de la playlist con el mismo título y `qualityLabel`)                                    | `AudioTrackList` si el navegador lo expone | archivo local .srt/.vtt                                                                |
+| WebTorrent             | ninguna (mismo fallback)                                                                                             | —                                          | archivos .srt/.vtt dentro del torrent (≤ 2 MB, convertidos localmente) + archivo local |
+| HLS con hls.js         | niveles declarados por la playlist + «Auto», limitados por los ajustes de calidad (`autoLevelCapping`, `startLevel`) | pistas alternativas declaradas             | pistas declaradas (renderizadas por hls.js) + archivo local                            |
+| HLS nativo             | las decide el navegador                                                                                              | `AudioTrackList` si existe                 | archivo local                                                                          |
+
+`TrackSelectors` (reproductor) consume esa API y pide al usuario un archivo local cuando no hay nada declarado. Las conversiones y object URLs se liberan al cambiar de pista o de elemento.
+
 ## Decisiones
 
 - **Vite + React + TypeScript** en lugar de Next.js: exportación estática trivial, sin riesgo de introducir rutas de servidor.
@@ -146,4 +162,6 @@ Métricas: peers (`torrent.numPeers`), velocidad de descarga y subida, disponibi
 - **Service Worker único**: las peticiones de una página siempre van al worker que la controla, así que el handler de streaming se importa dentro del worker de Workbox (`importScripts`) en lugar de registrarse en otro scope. Se reimplementa en `public/webtorrent-sw.js` (protocolo idéntico al `sw.min.js` de WebTorrent) para no llamar a `skipWaiting()` y conservar el aviso de actualización.
 - **Nunca OPFS**: el store por defecto de WebTorrent en Chromium es el Origin Private File System (disco). OVtorrent siempre inyecta su propio store efímero (RAM o IndexedDB local) para no escribir vídeos en disco.
 - **Ventana por throttling, no por borrado de piezas**: ver «Sesión WebTorrent paso a paso».
+- **HLS nativo primero**: si el `<video>` entiende `.m3u8` (Safari, algunos TV boxes) no se carga hls.js (≈ 190 KB gzip). hls.js se importa bajo demanda solo cuando hace falta MediaSource; la ventana de búfer se traduce a `maxBufferLength`/`backBufferLength`.
+- **Panel TV simplificado**: en modo TV el reproductor muestra solo los controles esenciales y el resto tras «Más»; el foco va al botón de reproducir (configurable).
 - **CSP inyectada solo en build**: el servidor de desarrollo necesita scripts inline para React Fast Refresh.

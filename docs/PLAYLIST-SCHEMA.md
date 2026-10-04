@@ -44,7 +44,9 @@ Las playlists se persisten únicamente en el almacenamiento local y se exportan/
 | `position`        | entero ≥ 0                                            | Se renumera al importar.                                                                                                               |
 | `durationSeconds` | número ≥ 0                                            | Opcional, introducido por el usuario.                                                                                                  |
 | `qualityLabel`    | string ≤ 16                                           | Opcional (`480p`, `1080p`, `2160p`…). Permite ofrecer selección de calidad entre variantes del mismo título.                           |
-| `addedAt`         | ISO 8601                                              | Opcional.                                                                                                                              |
+
+Tipos de fuente: `magnet` y `torrent` (P2P), `file` (archivo local, solo nombre), `url` (archivo http(s) directo), `hls` (playlist `.m3u8`, reproducida de forma nativa o con hls.js), `m3u` (reservado; las listas M3U se importan como elementos individuales).
+| `addedAt` | ISO 8601 | Opcional. |
 
 ## Comportamiento del importador
 

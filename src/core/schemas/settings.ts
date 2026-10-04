@@ -110,6 +110,10 @@ export const settingsSchema = z
         hideDiagnostics: z.boolean(),
         largeText: z.boolean(),
         highContrast: z.boolean(),
+        /** Show only the essential player controls in TV mode (the rest behind "Más"). */
+        simplifiedPlayer: z.boolean().optional().default(true),
+        /** Move focus to the play button when the player opens in TV mode. */
+        autoFocusPlayer: z.boolean().optional().default(true),
       })
       .strict(),
     privacy: z
@@ -150,7 +154,14 @@ export const DEFAULT_SETTINGS: Settings = {
     maxPeers: 30,
     maxConcurrentRequests: 8,
   },
-  tv: { mode: 'auto', hideDiagnostics: false, largeText: true, highContrast: true },
+  tv: {
+    mode: 'auto',
+    hideDiagnostics: false,
+    largeText: true,
+    highContrast: true,
+    simplifiedPlayer: true,
+    autoFocusPlayer: true,
+  },
   privacy: { confirmExternalUrls: true },
   p2p: DEFAULT_P2P_SETTINGS,
 };
