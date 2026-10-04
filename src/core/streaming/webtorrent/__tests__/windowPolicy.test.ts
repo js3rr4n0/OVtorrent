@@ -5,7 +5,7 @@ import {
   pieceRangeOf,
   secondsToPieces,
 } from '../windowPolicy';
-import { isWebSocketTracker, normalizeTrackerList } from '../trackers';
+import { DEFAULT_WEBSOCKET_TRACKERS, isWebSocketTracker, normalizeTrackerList } from '../trackers';
 
 const MB = 1024 * 1024;
 
@@ -67,6 +67,10 @@ describe('windowPolicy', () => {
 });
 
 describe('trackers', () => {
+  it('ships only wss defaults and no longer lists the dead btorrent.xyz tracker', () => {
+    expect(DEFAULT_WEBSOCKET_TRACKERS.every((t) => t.startsWith('wss://'))).toBe(true);
+    expect(DEFAULT_WEBSOCKET_TRACKERS.some((t) => t.includes('btorrent.xyz'))).toBe(false);
+  });
   it('accepts only WebSocket trackers and dedupes', () => {
     expect(isWebSocketTracker('wss://tracker.example/announce')).toBe(true);
     expect(isWebSocketTracker('udp://tracker.example:1337')).toBe(false);

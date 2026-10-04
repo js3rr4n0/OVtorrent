@@ -53,6 +53,8 @@ export interface StreamingMetrics {
   resolution?: { width: number; height: number };
   bitrateKbps?: number;
   warnings: string[];
+  /** Informational connection status (not a warning), e.g. tracker/peer discovery progress. */
+  status?: string;
 }
 
 export type SessionState =

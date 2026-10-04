@@ -297,3 +297,23 @@ Fase 4: optimización de memoria, Worker para parsing y métricas, exportación 
 - Pruebas con lectores de pantalla (NVDA, VoiceOver, TalkBack) en dispositivos reales.
 - Revisar `npm audit` en cada actualización de `webtorrent` y `hls.js`.
 - Posibles mejoras futuras fuera del plan: anuncios `aria-live` más granulares en el reproductor, virtualización del detalle de playlist, e2e de HLS real cuando el entorno disponga de un codificador.
+
+---
+
+## 2026-10-04 — Corrección tras la Fase 4: magnets sin peers web
+
+### Problema
+
+Al importar un magnet con solo trackers `udp://`, el reproductor mostraba un aviso por cada tracker («Unsupported tracker protocol»), un error de conexión con `wss://tracker.btorrent.xyz` (tracker caído desde hace años) y se quedaba en «Conectando…» sin explicar qué ocurría ni qué hacer.
+
+### Cambios
+
+- `src/core/streaming/webtorrent/trackers.ts`: lista por defecto sin `btorrent.xyz`; añadidos `tracker.files.fm:7073` y `tracker.novage.com.ua`.
+- `WebTorrentStreamingEngine.ts`: los avisos «Unsupported tracker protocol» dejan de listarse (se cuentan como trackers UDP/HTTP ignorados); los errores de conexión se consolidan y solo son aviso cuando ningún tracker WebSocket responde; se escucha `trackerAnnounce` para saber cuántos trackers responden; nuevo `metrics().status` con «Trackers WebSocket: N (M respondieron) · K trackers UDP/HTTP ignorados · Peers web: P»; el mensaje de falta de peers y el timeout de metadatos incluyen la guía honesta (`NO_PEERS_GUIDANCE`): hace falta un peer WebRTC, p. ej. un cliente híbrido como WebTorrent Desktop en otro dispositivo.
+- `src/core/streaming/types.ts`: campo opcional `status` en `StreamingMetrics`.
+- `PlayerPage.tsx`: el aviso de conexión muestra el estado de trackers y peers en tiempo real.
+- Documentación: `STREAMING-LIMITATIONS.md` (sección «Por qué un magnet popular puede no reproducirse»), `PRIVACY.md`.
+
+### Lo que no se puede arreglar
+
+Un navegador no puede conectar con peers BitTorrent clásicos. Si el enjambre no tiene peers WebRTC, el torrent no se reproduce en la web; la aplicación lo dice claramente y no simula lo contrario (regla de honestidad técnica).

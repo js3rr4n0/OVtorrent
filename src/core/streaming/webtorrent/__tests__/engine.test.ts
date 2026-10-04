@@ -4,6 +4,8 @@ import type { MediaItem } from '@/core/schemas/media';
 import { DEFAULT_SETTINGS, type Settings } from '@/core/schemas/settings';
 import { createEphemeralChunkStoreClass } from '../EphemeralChunkStore';
 import {
+  countTrackers,
+  NO_PEERS_GUIDANCE,
   NO_PEERS_MESSAGE,
   trackersFor,
   WebTorrentStreamingEngine,
@@ -162,10 +164,10 @@ describe('WebTorrentStreamingEngine', () => {
     });
     nowMs = 6000;
     await vi.advanceTimersByTimeAsync(1000);
-    expect(session.metrics().warnings).toContain(NO_PEERS_MESSAGE);
+    expect(session.metrics().warnings).toContain(`${NO_PEERS_MESSAGE} ${NO_PEERS_GUIDANCE}`);
     (client.torrents[0] as FakeTorrent).addPeer();
     await vi.advanceTimersByTimeAsync(1000);
-    expect(session.metrics().warnings).not.toContain(NO_PEERS_MESSAGE);
+    expect(session.metrics().warnings.join(' ')).not.toContain(NO_PEERS_MESSAGE);
     expect(session.metrics().peers).toBe(1);
     await session.destroy();
     vi.useRealTimers();
@@ -288,5 +290,79 @@ describe('EphemeralChunkStore', () => {
     expect(missing?.message).toMatch(/no disponible/);
     await new Promise<void>((r) => store.destroy(() => r()));
     expect((await buffer.getUsage()).chunks).toBe(0);
+  });
+});
+
+describe('tracker status and protocol warnings', () => {
+  const UDP_MAGNET = `magnet:?xt=urn:btih:${HASH}&tr=udp%3A%2F%2Ftracker.a%3A1337&tr=udp%3A%2F%2Ftracker.b%3A6969%2Fannounce&tr=wss%3A%2F%2Fextra.example`;
+
+  it('counts WebSocket trackers in use and UDP/HTTP trackers the browser must ignore', () => {
+    const status = countTrackers(UDP_MAGNET, ['wss://a', 'wss://b']);
+    expect(status).toEqual({ websocket: 3, responded: 0, failed: [], ignored: 2 });
+  });
+
+  it('hides per-tracker "Unsupported tracker protocol" noise and reports a status line instead', async () => {
+    const client = makeClient();
+    const session = await makeEngine(client).createSession({
+      item: { ...item, source: UDP_MAGNET },
+    });
+    await session.start({
+      videoElement: video(),
+      bufferWindow: { initialSeconds: 1, aheadSeconds: 1, behindSeconds: 1 },
+    });
+    const t = client.torrents[0] as FakeTorrent;
+    t.emit('warning', new Error('Unsupported tracker protocol: udp://tracker.a:1337'));
+    t.emit('warning', new Error('Unsupported tracker protocol: udp://tracker.b:6969/announce'));
+    expect(session.metrics().warnings).toEqual([]);
+    expect(session.metrics().status).toContain('2 trackers UDP/HTTP del magnet ignorados');
+    expect(session.metrics().status).toContain('Trackers WebSocket: 5 (0 respondieron)');
+    t.emit('trackerAnnounce');
+    t.emit('trackerAnnounce');
+    expect(session.metrics().status).toContain('(1 respondieron)');
+    await session.destroy();
+  });
+
+  it('only warns about tracker connection errors when every WebSocket tracker failed', async () => {
+    const client = makeClient();
+    const settings: Settings = {
+      ...DEFAULT_SETTINGS,
+      p2p: {
+        ...DEFAULT_SETTINGS.p2p,
+        useDefaultTrackers: false,
+        customTrackers: ['wss://one.example', 'wss://two.example'],
+      },
+    };
+    const session = await makeEngine(client, settings).createSession({ item });
+    await session.start({
+      videoElement: video(),
+      bufferWindow: { initialSeconds: 1, aheadSeconds: 1, behindSeconds: 1 },
+    });
+    const t = client.torrents[0] as FakeTorrent;
+    t.emit('warning', new Error('Error connecting to wss://one.example'));
+    expect(session.metrics().warnings).toEqual([]);
+    expect(session.metrics().status).toContain('1 sin conexión');
+    t.emit('warning', new Error('Error connecting to wss://two.example'));
+    // The magnet itself declares wss://t/announce: one tracker is still alive, so no alarm yet.
+    expect(session.metrics().warnings).toEqual([]);
+    t.emit('warning', new Error('Error connecting to wss://t/announce'));
+    expect(session.metrics().warnings.join(' ')).toMatch(/Ningún tracker WebSocket responde/);
+    t.emit('warning', new Error('invalid scrape response'));
+    expect(session.metrics().warnings.join(' ')).toMatch(
+      /Aviso del protocolo: invalid scrape response/,
+    );
+    await session.destroy();
+  });
+
+  it('explains what to do when metadata never arrives', async () => {
+    vi.useFakeTimers();
+    const client = makeClient({ autoReady: false });
+    const session = await makeEngine(client).createSession({ item });
+    const pending = session.metadata();
+    const assertion = expect(pending).rejects.toMatchObject({
+      reasons: expect.arrayContaining([NO_PEERS_GUIDANCE]),
+    });
+    await vi.advanceTimersByTimeAsync(95_000);
+    await assertion;
+    vi.useRealTimers();
   });
 });

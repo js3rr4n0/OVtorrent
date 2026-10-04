@@ -20,7 +20,11 @@ import { planBuffer, type EffectiveBufferPlan } from '../../memory/memoryPolicy'
 import { parseWorker } from '../../../workers/workerClient';
 import type { WorkerJob } from '../../../workers/protocol';
 import { getSharedClient, getStreamingRegistration } from './loadWebTorrent';
-import { DEFAULT_WEBSOCKET_TRACKERS, normalizeTrackerList } from './trackers';
+import {
+  DEFAULT_WEBSOCKET_TRACKERS,
+  isBrowserUsableTracker,
+  normalizeTrackerList,
+} from './trackers';
 import type { WtAddOptions, WtBrowserServer, WtClient, WtTorrent } from './types';
 import {
   computeWindow,
@@ -35,6 +39,21 @@ import type { TrackOption } from '../types';
 
 export const NO_PEERS_MESSAGE =
   'Esta fuente no tiene peers compatibles con el transporte web disponible en este navegador.';
+
+/** What the user can actually do when a swarm has no WebRTC peers. Honest: no proxy, no server. */
+export const NO_PEERS_GUIDANCE =
+  'Un navegador solo puede conectar con peers WebTorrent (WebRTC); los peers BitTorrent clásicos de este torrent no son accesibles. Para reproducirlo aquí hace falta al menos un peer web: por ejemplo, abrir el mismo magnet en un cliente híbrido como WebTorrent Desktop en otro dispositivo (actúa de puente con el enjambre clásico) o en otro navegador que ya lo tenga descargado.';
+
+export interface TrackerStatus {
+  /** Trackers announced to (WebSocket only). */
+  websocket: number;
+  /** Trackers that answered at least once. */
+  responded: number;
+  /** Trackers that failed to connect. */
+  failed: string[];
+  /** UDP/HTTP trackers from the magnet that a browser cannot use. */
+  ignored: number;
+}
 
 export interface WebTorrentEngineDeps {
   getSettings: () => Settings;
@@ -71,6 +90,22 @@ export function bitfieldBytes(
 
 const SUPPORTED: MediaItem['sourceType'][] = ['magnet', 'torrent'];
 const METADATA_TIMEOUT_MS = 90_000;
+
+/** Counts WebSocket trackers in use and non-browser trackers present in the magnet. */
+export function countTrackers(magnet: string, configured: string[]): TrackerStatus {
+  let ignored = 0;
+  const ws = new Set(configured);
+  try {
+    const params = new URLSearchParams(magnet.slice(magnet.indexOf('?') + 1));
+    for (const tr of params.getAll('tr')) {
+      if (isBrowserUsableTracker(tr)) ws.add(tr.trim());
+      else ignored++;
+    }
+  } catch {
+    /* ignore */
+  }
+  return { websocket: ws.size, responded: 0, failed: [], ignored };
+}
 
 export function trackersFor(settings: Settings): string[] {
   const list = settings.p2p.useDefaultTrackers ? [...DEFAULT_WEBSOCKET_TRACKERS] : [];
@@ -150,10 +185,14 @@ class WebTorrentSession implements StreamingSession {
   private warnings = new Map<string, string>();
   private startedAt = 0;
   private restarts = 0;
+  private trackerStatus: TrackerStatus = { websocket: 0, responded: 0, failed: [], ignored: 0 };
+  private announcedOnce = false;
   private bytesInStore = 0;
   private lastCriticalHead = -1;
   private availabilityCache = { at: 0, value: Number.NaN };
   private cleanupFns: Array<() => void> = [];
+  /** Torrent-level listeners: survive video re-attachment, cleared when the torrent is dropped. */
+  private torrentCleanupFns: Array<() => void> = [];
   private destroyed = false;
   private readonly settings: Settings;
   private readonly plan: EffectiveBufferPlan;
@@ -191,6 +230,48 @@ class WebTorrentSession implements StreamingSession {
     if (this.warnings.get(key) === message) return;
     this.warnings.set(key, message);
     this.emit();
+  }
+
+  /** Consolidates protocol noise into a few honest messages. */
+  private onProtocolWarning(err: Error) {
+    const msg = err.message;
+    if (/Unsupported tracker protocol/i.test(msg)) {
+      // Expected: UDP/HTTP trackers cannot be used from a browser. Counted once in the status line.
+      return;
+    }
+    const failed = /(?:Error connecting to|Connection error:?)\s*(wss?:\/\/\S+)?/i.exec(msg);
+    if (failed) {
+      const url = failed[1] ?? 'tracker';
+      if (!this.trackerStatus.failed.includes(url)) this.trackerStatus.failed.push(url);
+      if (
+        this.trackerStatus.websocket > 0 &&
+        this.trackerStatus.failed.length >= this.trackerStatus.websocket
+      ) {
+        this.warn(
+          'trackers',
+          `Ningún tracker WebSocket responde (${this.trackerStatus.failed.join(', ')}). Sin trackers no es posible descubrir peers web; revisa la conexión o añade otros en Ajustes → Calidad y búfer → P2P.`,
+        );
+      } else {
+        this.emit();
+      }
+      return;
+    }
+    this.warn(`warning:${msg.slice(0, 40)}`, `Aviso del protocolo: ${msg}`);
+  }
+
+  /** Human-readable discovery status shown while connecting. */
+  private discoveryStatus(): string {
+    const t = this.trackerStatus;
+    const peers = this.torrent?.numPeers ?? 0;
+    const parts = [
+      `Trackers WebSocket: ${t.websocket} (${t.responded} respondieron${t.failed.length ? `, ${t.failed.length} sin conexión` : ''})`,
+    ];
+    if (t.ignored > 0)
+      parts.push(
+        `${t.ignored} trackers UDP/HTTP del magnet ignorados: un navegador no puede usarlos`,
+      );
+    parts.push(`Peers web: ${peers}`);
+    return parts.join(' · ');
   }
 
   private clearWarning(key: string) {
@@ -238,10 +319,11 @@ class WebTorrentSession implements StreamingSession {
         reject(
           new StreamingUnavailableError(
             'No se pudieron obtener los metadatos del torrent (sin peers accesibles).',
-            [NO_PEERS_MESSAGE],
+            [NO_PEERS_MESSAGE, NO_PEERS_GUIDANCE, this.discoveryStatus()],
           ),
         );
       }, METADATA_TIMEOUT_MS);
+      this.trackerStatus = countTrackers(this.source.item.source, trackersFor(this.settings));
       const existing = client.torrents.find(
         (t) => !t.destroyed && this.source.item.source.toLowerCase().includes(t.infoHash),
       );
@@ -252,8 +334,12 @@ class WebTorrentSession implements StreamingSession {
         clearTimeout(timer);
         reject(err);
       };
-      const onWarning = (err: Error) =>
-        this.warn(`warning:${err.message.slice(0, 40)}`, `Aviso del protocolo: ${err.message}`);
+      const onWarning = (err: Error) => this.onProtocolWarning(err);
+      const onAnnounce = () => {
+        if (!this.announcedOnce) this.trackerStatus.responded += 1;
+        this.announcedOnce = true;
+        this.emit();
+      };
       const onReady = () => {
         if (settled) return;
         settled = true;
@@ -261,9 +347,11 @@ class WebTorrentSession implements StreamingSession {
         resolve(t);
       };
       t.on('warning', onWarning as never);
+      t.on('trackerAnnounce', onAnnounce as never);
       t.on('error', onError as never);
-      this.cleanupFns.push(() => {
+      this.torrentCleanupFns.push(() => {
         t.removeListener('warning', onWarning as never);
+        t.removeListener('trackerAnnounce', onAnnounce as never);
         t.removeListener('error', onError as never);
       });
       if (t.ready) onReady();
@@ -405,7 +493,7 @@ class WebTorrentSession implements StreamingSession {
       this.now() - this.startedAt > this.settings.p2p.noPeersTimeoutSeconds * 1000 &&
       !this.hasEnoughForPlayback()
     ) {
-      this.warn('no-peers', NO_PEERS_MESSAGE);
+      this.warn('no-peers', `${NO_PEERS_MESSAGE} ${NO_PEERS_GUIDANCE}`);
     }
     this.scheduleCritical(false);
     this.checkMemoryLimit();
@@ -487,6 +575,8 @@ class WebTorrentSession implements StreamingSession {
   private dropTorrent(): Promise<void> {
     const torrent = this.torrent;
     this.torrent = null;
+    for (const fn of this.torrentCleanupFns.splice(0)) fn();
+    this.announcedOnce = false;
     this.lastCriticalHead = -1;
     if (this.client && this.throttled) {
       this.client.throttleDownload(UNLIMITED_RATE);
@@ -644,6 +734,7 @@ class WebTorrentSession implements StreamingSession {
         this.restarts > 0
           ? [...warnings, `Reinicios por memoria en esta sesión: ${this.restarts}`]
           : warnings,
+      status: this.discoveryStatus(),
     };
   }
 }

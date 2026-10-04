@@ -36,6 +36,16 @@ Estas limitaciones son inherentes a una aplicación P2P que se ejecuta exclusiva
 - La PWA necesita conexión a Internet para descubrir peers y recibir contenido P2P.
 - La interfaz y la configuración funcionan offline; el streaming no.
 
+## Por qué un magnet «popular» puede no reproducirse
+
+La mayoría de los magnets que circulan solo declaran trackers `udp://` o `http://` y sus peers son clientes BitTorrent clásicos (TCP/uTP). Desde un navegador:
+
+- los trackers UDP/HTTP se ignoran (no existe forma de hablarles desde la web); la aplicación lo indica una sola vez en el estado de conexión en lugar de un aviso por tracker;
+- se anuncian los trackers WebSocket configurados (por defecto `tracker.openwebtorrent.com`, `tracker.webtorrent.dev`, `tracker.files.fm` y `tracker.novage.com.ua`), que solo conocen peers **WebRTC**;
+- si ningún peer WebRTC tiene el torrent, no llegan ni los metadatos: el reproductor muestra «Esta fuente no tiene peers compatibles con el transporte web disponible en este navegador» y el estado de trackers.
+
+Qué puede hacer el usuario (sin que la aplicación añada servidores ni proxies): abrir el mismo magnet en un cliente **híbrido** como WebTorrent Desktop en otro dispositivo o en un navegador que ya tenga el contenido. Esos clientes se conectan tanto a peers clásicos como a peers WebRTC y actúan de puente para el navegador. OVtorrent no incluye ni recomienda proxies, relays ni servicios de pago para ocultar esta limitación.
+
 ## Cómo funciona la ventana temporal con WebTorrent
 
 - El archivo elegido se descarga con estrategia **secuencial** y las piezas del búfer inicial a partir del playhead se marcan críticas en cada tick y en cada seek.

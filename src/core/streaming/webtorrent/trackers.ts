@@ -2,11 +2,14 @@
  * Public WebSocket trackers. They are a dependency of the WebTorrent protocol
  * (the only way a browser can discover peers), not services operated by this
  * application. The user can disable or replace them in Settings → Playback.
+ * `tracker.btorrent.xyz` was removed: it has been unreachable for years and
+ * only produced connection errors.
  */
 export const DEFAULT_WEBSOCKET_TRACKERS: readonly string[] = [
   'wss://tracker.openwebtorrent.com',
   'wss://tracker.webtorrent.dev',
-  'wss://tracker.btorrent.xyz',
+  'wss://tracker.files.fm:7073/announce',
+  'wss://tracker.novage.com.ua',
 ];
 
 export function isWebSocketTracker(url: string): boolean {
@@ -21,4 +24,9 @@ export function normalizeTrackerList(input: readonly string[]): string[] {
     out.push(t);
   }
   return out;
+}
+
+/** Trackers a browser cannot use (UDP/HTTP announce): reported once, not per tracker. */
+export function isBrowserUsableTracker(url: string): boolean {
+  return isWebSocketTracker(url);
 }

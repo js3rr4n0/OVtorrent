@@ -305,8 +305,13 @@ export function PlayerPage() {
       ) : null}
       {playback.session?.engine === 'webtorrent' && playback.state === 'loading' ? (
         <Notice kind="info">
-          Conectando con trackers WebSocket y buscando peers compatibles con WebRTC… Puede tardar;
-          si la fuente no tiene peers web, no será posible reproducirla.
+          <p>
+            Conectando con trackers WebSocket y buscando peers compatibles con WebRTC… Puede tardar;
+            si la fuente no tiene peers web, no será posible reproducirla.
+          </p>
+          {playback.metrics?.status ? (
+            <p className="mt-1 text-xs tv:text-base">{playback.metrics.status}</p>
+          ) : null}
         </Notice>
       ) : null}
       {playback.metrics?.warnings.length ? (
