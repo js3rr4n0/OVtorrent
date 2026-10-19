@@ -1,89 +1,126 @@
 # OVtorrent
 
-**Reproductor web P2P con búfer temporal limitado y limpieza automática de datos de sesión.**
+<p align="center"><b>English</b> · <a href="README.es.md">Español</a></p>
 
-PWA 100 % estática: se ejecuta íntegramente en el navegador, sin backend, sin base de datos, sin cuentas, sin claves API y sin servicios de pago. Se despliega como archivos estáticos en cualquier servidor HTTP (GitHub Pages, GitLab Pages, Cloudflare Pages, Netlify, Nginx o un servidor local).
+**Peer-to-peer web video player with a limited temporary buffer and automatic cleanup of session data.**
 
-> Estado: **Fase 4 completada** (todas las fases del plan). Fase 1: PWA estática, biblioteca y playlists locales, importación de magnet/.torrent/archivo/URL/JSON, reproductor HTML5, configuración de búfer y calidad, modo TV básico, diagnóstico, limpieza de sesión. Fase 2: motor **WebTorrent en el navegador** (WebRTC + trackers WebSocket), selección de archivo dentro del torrent, métricas de peers y velocidad, prioridad secuencial con ventana temporal, búfer efímero en RAM o IndexedDB, reinicio automático al superar el límite de memoria y limpieza avanzada. Fase 3: importación M3U/M3U8, HLS multivariant (nativo o hls.js sobre MediaSource), selección de calidad entre variantes declaradas, subtítulos SRT convertidos localmente a WebVTT y pistas de subtítulos del torrent o del HLS, pistas de audio alternativas cuando la fuente y el navegador las exponen, panel de reproducción simplificado para TV y diagnóstico ampliado. Fase 4: Worker de parsing y métricas con fallback, optimización de memoria (ventana automática en dispositivos con poca RAM, listas virtualizadas, sondeo pausado en pestañas ocultas), exportación selectiva con vista previa de importación, diagnóstico ampliado con pruebas de decodificación (MediaCapabilities) y de WebRTC, carpetas locales, auditoría de seguridad automatizada y auditoría de accesibilidad con axe. Ver [recap.md](recap.md).
+A 100% static PWA: it runs entirely in the browser, with no backend, no database, no accounts, no API keys and no paid services. It deploys as static files on any HTTP server (Vercel, GitHub Pages, Cloudflare Pages, Netlify, Nginx or a local server).
 
-## Qué hace (y qué no)
+🔗 **Live demo:** [o-vtorrent.vercel.app](https://o-vtorrent.vercel.app)
 
-- Reproduce contenido multimedia **autorizado** desde: magnet links y archivos `.torrent` (WebTorrent en navegador, solo peers compatibles con WebRTC), archivos multimedia locales, URLs multimedia introducidas manualmente, listas M3U/M3U8, fuentes HLS (nativas o mediante hls.js) y playlists JSON.
-- Mantiene **todo** en el navegador: preferencias, tema, configuración del reproductor, calidad y búfer, playlists, historial, favoritos, metadatos introducidos por ti, modo TV y diagnósticos no sensibles.
-- Prioriza un **modo de reproducción temporal**: no descarga intencionadamente el archivo completo, pide las piezas cercanas a la posición actual, mantiene una ventana futura e histórica configurable y limpia el resto al detener, cambiar de fuente o cerrar.
-- **No** incluye buscador, indexador, scraping, catálogo remoto, cuentas, telemetría, analítica ni proxy.
+![Local library](docs/screenshots/library.png)
 
-No describimos el producto como «no descarga nada»: toda reproducción necesita transferir datos al navegador, y el navegador o la librería P2P pueden aplicar cachés internas que no siempre controla la aplicación.
+The interface is in Spanish.
 
-## Restricciones de diseño (obligatorias)
+## Screenshots
 
-| Requisito                        | Cumplimiento                                                                                                                                                                                                        |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sin base de datos                | Solo `localStorage`, `sessionStorage`, IndexedDB **local** (búfer efímero opcional) y memoria. IndexedDB no es una base de datos remota ni un servidor.                                                             |
-| Sin backend                      | Ningún proceso Node.js en producción. Node solo compila y sirve en desarrollo.                                                                                                                                      |
-| Sin servicios de pago ni cuentas | No hay claves API, suscripciones, Firebase, Supabase, OAuth, trackers privados ni señalización propia. Los trackers WebSocket públicos son una dependencia del protocolo WebTorrent, configurables y desactivables. |
-| Open source                      | Licencia MIT; dependencias MIT/Apache-2.0 ([docs/LICENSES.md](docs/LICENSES.md)).                                                                                                                                   |
-| Offline                          | La interfaz y la configuración funcionan sin red (Service Worker con app shell). El streaming P2P y las URLs remotas necesitan Internet.                                                                            |
+| | |
+|---|---|
+| ![Player](docs/screenshots/player.jpg) **Player** with keyboard controls, playback speed, repeat and picture-in-picture | ![Import](docs/screenshots/import.png) **Import** a magnet link, .torrent, local file, URL, M3U/M3U8 or JSON playlist |
+| ![Quality and buffer](docs/screenshots/quality-buffer.png) **Quality and buffer**: time window, memory limit and storage estimate | ![Diagnostics](docs/screenshots/diagnostics.png) **Diagnostics**: the browser's real APIs, codecs and limitations |
+| ![TV mode](docs/screenshots/tv-mode.png) **TV mode** with D-pad navigation, large text and high contrast | ![Playlists](docs/screenshots/playlists.png) **Local playlists**, exportable as JSON |
 
-## Pegar un magnet y reproducir: el puente
+## What it does (and what it doesn't)
 
-Un navegador solo alcanza peers WebRTC, así que la mayoría de los magnets «normales» (enjambres TCP/UDP) no tienen peers accesibles desde la web. Para que baste con pegar el magnet y pulsar reproducir, el repositorio incluye un **puente opcional y autoalojado** (`bridge/`): un programa gratuito que ejecutas en tu PC o NAS, habla BitTorrent clásico y sirve el contenido al navegador por WebRTC, sin servidores de terceros.
+- Plays **authorized** media from: magnet links and `.torrent` files (WebTorrent in the browser, WebRTC-compatible peers only), local media files, manually entered media URLs, M3U/M3U8 lists, HLS sources (native or via hls.js) and JSON playlists.
+- Keeps **everything** in the browser: preferences, theme, player settings, quality and buffer, playlists, history, favorites, your own metadata, TV mode and non-sensitive diagnostics.
+- Prioritizes **temporary playback**: it doesn't intentionally download the whole file. It requests the pieces near the current position, keeps a configurable look-ahead and look-behind window, and clears the rest when you stop, switch sources or close the tab.
+- Does **not** include search, indexing, scraping, a remote catalog, accounts, telemetry, analytics or a proxy.
+
+We don't describe it as "downloads nothing": every playback needs to transfer data to the browser, and the browser or the P2P library may apply internal caches the app can't always control.
+
+## Highlights
+
+- **WebTorrent engine in the browser** (WebRTC + WebSocket trackers): file selection inside a torrent, peer and speed metrics, sequential priority with a time window, and an ephemeral buffer in RAM or IndexedDB that restarts automatically when it exceeds the memory limit.
+- **HLS and M3U/M3U8**: multivariant HLS (native or hls.js over MediaSource), quality selection among declared variants, SRT subtitles converted locally to WebVTT, and alternative audio tracks when the source and browser expose them.
+- **Performance**: a Web Worker for parsing and metrics (with fallback), automatic smaller windows on low-RAM devices, virtualized lists, and paused polling in hidden tabs.
+- **Offline-ready PWA**: the interface and settings work without a network thanks to a Service Worker app shell.
+- **TV mode**: D-pad navigation, visible focus, 48×48 px targets and a simplified playback panel for TV boxes.
+- **Quality**: automated security audit and accessibility audit with axe, documented in `docs/`.
+
+## Design constraints
+
+| Requirement | How it's met |
+| --- | --- |
+| No database | Only `localStorage`, `sessionStorage`, **local** IndexedDB (optional ephemeral buffer) and memory. |
+| No backend | No Node.js process in production. Node is only used to build and to serve during development. |
+| No paid services or accounts | No API keys, subscriptions, Firebase, Supabase, OAuth, private trackers or custom signaling. Public WebSocket trackers are part of the WebTorrent protocol and can be changed or turned off. |
+| Open source | MIT license; MIT/Apache-2.0 dependencies ([docs/LICENSES.md](docs/LICENSES.md)). |
+| Offline | The interface and settings work without a network. P2P streaming and remote URLs need Internet. |
+
+## Paste a magnet and play: the bridge
+
+A browser can only reach WebRTC peers, so most "regular" magnets (TCP/UDP swarms) have no peers reachable from the web. So that pasting a magnet and pressing play is enough, the repository includes an **optional, self-hosted bridge** (`bridge/`): a free program you run on your PC or NAS that speaks classic BitTorrent and serves the content to the browser over WebRTC, with no third-party servers.
 
 ```bash
-cd bridge && npm install && npm start -- --code mi-codigo
+cd bridge && npm install && npm start -- --code my-code
 ```
 
-Introduce el código en Ajustes → Calidad y búfer → Puente. Detalles, privacidad y límites en [docs/BRIDGE.md](docs/BRIDGE.md). La aplicación web sigue funcionando sin el puente para fuentes con peers web, archivos locales, URLs y HLS.
+Enter the code under Settings → Quality and buffer → Bridge. Details, privacy and limits are in [docs/BRIDGE.md](docs/BRIDGE.md). The web app still works without the bridge for sources with web peers, local files, URLs and HLS.
 
-## Limitaciones técnicas reales
+## Real technical limitations
 
-Se muestran en la aplicación (`/about`, `/diagnostics`) y en [docs/STREAMING-LIMITATIONS.md](docs/STREAMING-LIMITATIONS.md). Resumen:
+These are shown in the app (`/about`, `/diagnostics`) and in [docs/STREAMING-LIMITATIONS.md](docs/STREAMING-LIMITATIONS.md). In short:
 
-- BitTorrent requiere transferir piezas al dispositivo; no se puede reproducir una pieza que ningún peer tenga.
-- Un navegador solo conecta con peers compatibles con **WebRTC/WebTorrent**, no con todos los peers BitTorrent TCP/UDP tradicionales. Habrá menos peers que en un cliente nativo.
-- El soporte depende de WebRTC, MediaSource Extensions, codecs y políticas del navegador. No se garantiza 4K en todos los TV boxes.
-- No hay transcodificación: un archivo 4K único no se convierte a 1080p. La selección de resolución solo elige entre variantes existentes.
-- El navegador o el sistema operativo pueden limpiar el almacenamiento local o limitar memoria. La limpieza final al cerrar la pestaña es best effort.
+- BitTorrent needs to transfer pieces to the device; a piece no peer has can't be played.
+- A browser only connects to **WebRTC/WebTorrent** peers, not to every traditional TCP/UDP BitTorrent peer, so there are fewer peers than in a native client.
+- Support depends on WebRTC, MediaSource Extensions, codecs and browser policies. 4K isn't guaranteed on every TV box.
+- There's no transcoding: a single 4K file isn't converted to 1080p. Resolution selection only chooses between variants that already exist.
+- The browser or operating system may clear local storage or limit memory. Final cleanup when closing the tab is best effort.
 
-## Inicio rápido
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| App | **React**, **TypeScript**, **Vite**, React Router (hash routing), **Zustand** |
+| Streaming | **WebTorrent** (WebRTC), **hls.js**, MediaSource Extensions |
+| Validation | **Zod** (strict schemas for every import and stored value) |
+| Styling | **Tailwind CSS** |
+| Offline | Service Worker (PWA app shell) |
+| Testing | **Vitest** + React Testing Library, **Playwright** end-to-end (including real P2P streaming against a local tracker), axe accessibility checks |
+| CI | GitHub Actions: lint, typecheck, unit tests, build, bridge tests and end-to-end tests on every push |
+
+## Getting started
 
 ```bash
-npm install   # con npm 10 puede requerir: npm install --legacy-peer-deps (peers opcionales de Vitest 4)
-npm run dev        # servidor de desarrollo (Vite)
-npm run build      # salida estática en dist/
-npm run preview    # sirve dist/ localmente
+npm install
+npm run dev        # development server (Vite)
+npm run build      # static output in dist/
+npm run preview    # serve dist/ locally
 npm run test       # Vitest + React Testing Library
-npm run test:e2e   # Playwright (usa npm run preview); incluye streaming P2P real con tracker local
+npm run test:e2e   # Playwright (uses npm run preview); includes real P2P streaming with a local tracker
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
-npm run clean      # elimina dist/, coverage/, informes
+npm run clean      # removes dist/, coverage/, reports
 ```
 
-Requisitos: Node.js ≥ 20 solo para compilar. El resultado en `dist/` no necesita Node.
+Requirements: Node.js ≥ 20, only to build. The output in `dist/` doesn't need Node.
 
-## Despliegue
+## Deployment
 
-`dist/` es un sitio estático con `base: './'` y **hash routing** (`/#/playlists`), por lo que funciona en subcarpetas y recargas sin configurar fallbacks en el servidor. Guía completa en [docs/STATIC-DEPLOYMENT.md](docs/STATIC-DEPLOYMENT.md).
+`dist/` is a static site with `base: './'` and **hash routing** (`/#/playlists`), so it works in subfolders and on reload without configuring server fallbacks. Full guide in [docs/STATIC-DEPLOYMENT.md](docs/STATIC-DEPLOYMENT.md).
 
-## Documentación
+## Documentation
 
-| Documento                                                      | Contenido                                                                                    |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                   | Arquitectura client-side, módulos, abstracciones `StreamingEngine` y `EphemeralBufferStore`. |
-| [docs/STATIC-DEPLOYMENT.md](docs/STATIC-DEPLOYMENT.md)         | GitHub Pages, GitLab Pages, Cloudflare Pages, Netlify, Nginx, servidor local.                |
-| [docs/PRIVACY.md](docs/PRIVACY.md)                             | Política de privacidad local.                                                                |
-| [docs/SECURITY.md](docs/SECURITY.md)                           | Validación, sanitización, CSP, límites.                                                      |
-| [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md)                 | Teclado, foco, contraste, ARIA.                                                              |
-| [docs/TV-COMPATIBILITY.md](docs/TV-COMPATIBILITY.md)           | Modo TV, D-pad, TV boxes.                                                                    |
-| [docs/BROWSER-COMPATIBILITY.md](docs/BROWSER-COMPATIBILITY.md) | APIs requeridas por navegador.                                                               |
-| [docs/STREAMING-LIMITATIONS.md](docs/STREAMING-LIMITATIONS.md) | Limitaciones de WebTorrent/WebRTC en navegador.                                              |
-| [docs/LOCAL-STORAGE.md](docs/LOCAL-STORAGE.md)                 | Qué se guarda, dónde y cómo borrarlo.                                                        |
-| [docs/PLAYLIST-SCHEMA.md](docs/PLAYLIST-SCHEMA.md)             | Esquema JSON versionado.                                                                     |
-| [docs/TESTING.md](docs/TESTING.md)                             | Estrategia de pruebas y adapters falsos.                                                     |
-| [docs/LICENSES.md](docs/LICENSES.md)                           | Licencias de dependencias.                                                                   |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                             | Cómo contribuir.                                                                             |
-| [recap.md](recap.md)                                           | Registro acumulativo por fases.                                                              |
+The detailed documents are in Spanish.
 
-## Uso responsable
+| Document | Contents |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Client-side architecture, modules, `StreamingEngine` and `EphemeralBufferStore` abstractions. |
+| [docs/STATIC-DEPLOYMENT.md](docs/STATIC-DEPLOYMENT.md) | GitHub Pages, GitLab Pages, Cloudflare Pages, Netlify, Nginx, local server. |
+| [docs/PRIVACY.md](docs/PRIVACY.md) | Local privacy policy. |
+| [docs/SECURITY.md](docs/SECURITY.md) | Validation, sanitization, CSP, limits. |
+| [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) | Keyboard, focus, contrast, ARIA. |
+| [docs/TV-COMPATIBILITY.md](docs/TV-COMPATIBILITY.md) | TV mode, D-pad, TV boxes. |
+| [docs/BROWSER-COMPATIBILITY.md](docs/BROWSER-COMPATIBILITY.md) | Required APIs per browser. |
+| [docs/STREAMING-LIMITATIONS.md](docs/STREAMING-LIMITATIONS.md) | WebTorrent/WebRTC limitations in the browser. |
+| [docs/LOCAL-STORAGE.md](docs/LOCAL-STORAGE.md) | What's stored, where, and how to delete it. |
+| [docs/PLAYLIST-SCHEMA.md](docs/PLAYLIST-SCHEMA.md) | Versioned JSON schema. |
+| [docs/TESTING.md](docs/TESTING.md) | Testing strategy and fake adapters. |
+| [docs/LICENSES.md](docs/LICENSES.md) | Dependency licenses. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute. |
+| [recap.md](recap.md) | Cumulative log by phase. |
 
-Todos los usos deben respetar los derechos y licencias aplicables al contenido. OVtorrent no facilita el descubrimiento de contenido de terceros.
+## Responsible use
+
+All use must respect the rights and licenses that apply to the content. OVtorrent doesn't help discover third-party content.
